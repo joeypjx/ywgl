@@ -580,7 +580,7 @@ nlohmann::json DatabaseManager::getNodesWithLatestMetrics() {
                 WHERE hostIp = ? 
                 ORDER BY timestamp DESC LIMIT 1
             )");
-            cpu_query.bind(1, hostIpam);
+            cpu_query.bind(1, hostIp);
             
             if (cpu_query.executeStep()) {
                 nlohmann::json cpu_metrics;
