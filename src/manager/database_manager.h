@@ -33,30 +33,30 @@ public:
 
     // Node Status Monitor
     void startNodeStatusMonitorThread();
-    bool updateNodeStatusOnly(const std::string& hostIp, const std::string& new_status);
+    bool updateNodeStatusOnly(const std::string& host_ip, const std::string& new_status);
 
     // Node Management
     bool updateNode(const nlohmann::json& node_info);
     nlohmann::json getNode(int box_id, int slot_id, int cpu_id);
-    nlohmann::json getNodeByHostIp(const std::string& hostIp);
+    nlohmann::json getNodeByhost_ip(const std::string& host_ip);
     nlohmann::json getAllNodes();
     nlohmann::json getNodesWithLatestMetrics();
 
     // Node Metrics Methods
-    bool saveNodeCpuMetrics(const std::string& hostIp, long long timestamp, const nlohmann::json& cpu_data);
-    bool saveNodeMemoryMetrics(const std::string& hostIp, long long timestamp, const nlohmann::json& memory_data);
-    bool saveNodeDiskMetrics(const std::string& hostIp, long long timestamp, const nlohmann::json& disk_data);
-    bool saveNodeNetworkMetrics(const std::string& hostIp, long long timestamp, const nlohmann::json& network_data);
-    bool saveNodeDockerMetrics(const std::string& hostIp, long long timestamp, const nlohmann::json& docker_data);
-    bool saveNodeGpuMetrics(const std::string& hostIp, long long timestamp, const nlohmann::json& gpu_data);
+    bool saveNodeCpuMetrics(const std::string& host_ip, long long timestamp, const nlohmann::json& cpu_data);
+    bool saveNodeMemoryMetrics(const std::string& host_ip, long long timestamp, const nlohmann::json& memory_data);
+    bool saveNodeDiskMetrics(const std::string& host_ip, long long timestamp, const nlohmann::json& disk_data);
+    bool saveNodeNetworkMetrics(const std::string& host_ip, long long timestamp, const nlohmann::json& network_data);
+    bool saveNodeDockerMetrics(const std::string& host_ip, long long timestamp, const nlohmann::json& docker_data);
+    bool saveNodeGpuMetrics(const std::string& host_ip, long long timestamp, const nlohmann::json& gpu_data);
 
     // Node Metrics Query Methods
-    nlohmann::json getNodeCpuMetrics(const std::string& hostIp, int limit = 100);
-    nlohmann::json getNodeMemoryMetrics(const std::string& hostIp, int limit = 100);
-    nlohmann::json getNodeDiskMetrics(const std::string& hostIp, int limit = 100);
-    nlohmann::json getNodeNetworkMetrics(const std::string& hostIp, int limit = 100);
-    nlohmann::json getNodeDockerMetrics(const std::string& hostIp, int limit = 100);
-    nlohmann::json getNodeGpuMetrics(const std::string& hostIp, int limit = 100);
+    nlohmann::json getNodeCpuMetrics(const std::string& host_ip, int limit = 100);
+    nlohmann::json getNodeMemoryMetrics(const std::string& host_ip, int limit = 100);
+    nlohmann::json getNodeDiskMetrics(const std::string& host_ip, int limit = 100);
+    nlohmann::json getNodeNetworkMetrics(const std::string& host_ip, int limit = 100);
+    nlohmann::json getNodeDockerMetrics(const std::string& host_ip, int limit = 100);
+    nlohmann::json getNodeGpuMetrics(const std::string& host_ip, int limit = 100);
     
     bool saveNodeResourceUsage(const nlohmann::json& resource_usage);
 

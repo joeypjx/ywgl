@@ -100,8 +100,8 @@ void HTTPServer::handleResourceUpdate(const httplib::Request &req, httplib::Resp
         auto& data = request_json["data"];
         
         // 检查必要字段
-        if (!check_json_fields(data, {"hostIp", "resource"})) {
-            sendErrorResponse(res, "hostIp and resource are required in request body");
+        if (!check_json_fields(data, {"host_ip", "resource"})) {
+            sendErrorResponse(res, "host_ip and resource are required in request body");
             return;
         }
         
@@ -112,7 +112,7 @@ void HTTPServer::handleResourceUpdate(const httplib::Request &req, httplib::Resp
         
         // 构建metrics_data对象
         nlohmann::json metrics_data = {
-            {"hostIp", data["hostIp"]},
+            {"host_ip", data["host_ip"]},
             {"timestamp", std::chrono::duration_cast<std::chrono::milliseconds>(
                 std::chrono::system_clock::now().time_since_epoch()).count()},
             {"resource", data["resource"]}

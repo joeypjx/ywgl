@@ -18,7 +18,7 @@ SQLITECPP_DIR = $(DEPS_DIR)/SQLiteCpp
 # 包含目录
 INCLUDES = -I$(SRC_DIR) \
           -I$(MANAGER_DIR) \
-          -I$(JSON_DIR) \
+          -I$(JSON_DIR)/include \
           -I$(HTTPLIB_DIR) \
           -I$(SQLITECPP_DIR)/include \
           -I/usr/local/include

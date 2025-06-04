@@ -48,7 +48,8 @@
         "variant": "cpp",
         "vector": "cpp",
         "algorithm": "cpp",
-        "list": "cpp"
+        "list": "cpp",
+        "chrono": "cpp"
     },
     "cmake.ignoreCMakeListsMissing": true
 }

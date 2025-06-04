@@ -5,9 +5,9 @@
             "includePath": [
                 "${workspaceFolder}/src",
                 "${workspaceFolder}/src/manager",
-                "${workspaceFolder}/deps/nlohmann_json",
+                "${workspaceFolder}/deps/nlohmann_json/include",
                 "${workspaceFolder}/deps/cpp-httplib",
-                "${workspaceFolder}/deps/SQLiteCpp",
+                "${workspaceFolder}/deps/SQLiteCpp/include",
                 "/usr/local/include",
                 "/usr/include"
             ],
