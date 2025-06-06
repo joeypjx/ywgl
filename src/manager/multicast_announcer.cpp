@@ -12,7 +12,7 @@
 #include <fstream>
 
 // MulticastAnnouncer 构造函数
-MulticastAnnouncer::MulticastAnnouncer(int port, int interval_sec = 5)
+MulticastAnnouncer::MulticastAnnouncer(int port, int interval_sec)
     : port_(port), interval_sec_(interval_sec), running_(false), local_ip_("127.0.0.1"),
       multicast_addr_("239.255.0.1"), multicast_port_(50000) {}
 

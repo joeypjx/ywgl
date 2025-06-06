@@ -7,6 +7,7 @@
 #include <netinet/in.h>
 #include <nlohmann/json.hpp>
 #include <memory>
+#include "config_manager.h"
 
 class MulticastAnnouncer {
 public:
