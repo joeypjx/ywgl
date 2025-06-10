@@ -7,7 +7,6 @@
 #include <netinet/in.h>
 #include <nlohmann/json.hpp>
 #include <memory>
-#include "config_manager.h"
 
 class MulticastAnnouncer {
 public:
@@ -27,7 +26,6 @@ private:
     std::thread thread_;
     std::atomic<bool> running_;
     std::string local_ip_;
-    std::shared_ptr<ConfigManager> config_;
 };
 
 #endif // MULTICAST_ANNOUNCER_H 
