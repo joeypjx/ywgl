@@ -1,13 +1,49 @@
 #include "rpc_server.hpp"
 #include <iostream>
 #include <sstream>
+#include <stdexcept>
 
-RPCServer::RPCServer(const std::string& endpoint)
-    : context_(1)
-    , socket_(context_, ZMQ_REP)
-    , endpoint_(endpoint)
-    , running_(false) {
-    socket_.bind(endpoint_);
+namespace {
+    // 辅助函数：从JSON中提取参数
+    template<typename T>
+    T deserializeArg(const json& value) {
+        return value.get<T>();
+    }
+
+    // 辅助函数：调用无参数的处理函数
+    json callHandlerImpl(std::function<json()> handler, const json& params) {
+        if (!params.empty()) {
+            throw std::runtime_error("参数数量不匹配");
+        }
+        return handler();
+    }
+
+    // 辅助函数：调用单参数的处理函数
+    template<typename T>
+    json callHandlerImpl(std::function<json(T)> handler, const json& params) {
+        if (params.size() != 1) {
+            throw std::runtime_error("参数数量不匹配");
+        }
+        return handler(deserializeArg<T>(params[0]));
+    }
+
+    // 辅助函数：调用双参数的处理函数
+    template<typename T1, typename T2>
+    json callHandlerImpl(std::function<json(T1, T2)> handler, const json& params) {
+        if (params.size() != 2) {
+            throw std::runtime_error("参数数量不匹配");
+        }
+        return handler(deserializeArg<T1>(params[0]), deserializeArg<T2>(params[1]));
+    }
+}
+
+RPCServer::RPCServer(const std::string& endpoint) 
+    : context_(1), socket_(context_, ZMQ_REP) {
+    try {
+        socket_.bind(endpoint);
+    } catch (const zmq::error_t& e) {
+        throw std::runtime_error("Failed to bind socket: " + std::string(e.what()));
+    }
 }
 
 RPCServer::~RPCServer() {
@@ -15,107 +51,100 @@ RPCServer::~RPCServer() {
 }
 
 void RPCServer::start() {
-    if (running_) return;
-    
     running_ = true;
-    worker_thread_ = std::thread(&RPCServer::run, this);
+    while (running_) {
+        try {
+            zmq::message_t request;
+            auto result = socket_.recv(request, zmq::recv_flags::none);
+            if (!result) {
+                continue;
+            }
+
+            std::string request_str(static_cast<char*>(request.data()), request.size());
+            json response = handleRequest(request_str);
+
+            std::string response_str = response.dump();
+            zmq::message_t reply(response_str.size());
+            memcpy(reply.data(), response_str.data(), response_str.size());
+            socket_.send(reply, zmq::send_flags::none);
+        } catch (const std::exception& e) {
+            std::cerr << "Error handling request: " << e.what() << std::endl;
+            json error_response = createErrorResponse(-32000, "Internal error: " + std::string(e.what()));
+            std::string error_str = error_response.dump();
+            zmq::message_t reply(error_str.size());
+            memcpy(reply.data(), error_str.data(), error_str.size());
+            socket_.send(reply, zmq::send_flags::none);
+        }
+    }
 }
 
 void RPCServer::stop() {
-    if (!running_) return;
-    
     running_ = false;
-    cv_.notify_all();
-    if (worker_thread_.joinable()) {
-        worker_thread_.join();
-    }
+    socket_.close();
 }
 
-void RPCServer::run() {
-    while (running_) {
-        zmq::message_t request;
-        try {
-            auto result = socket_.recv(request, zmq::recv_flags::dontwait);
-            if (result) {
-                std::string request_str(static_cast<char*>(request.data()), request.size());
-                Json::Value response = handleRequest(request_str);
-                
-                std::string response_str = response.toStyledString();
-                zmq::message_t reply(response_str.size());
-                memcpy(reply.data(), response_str.c_str(), response_str.size());
-                socket_.send(reply, zmq::send_flags::none);
-            }
-        } catch (const std::exception& e) {
-            std::cerr << "Error in RPC server: " << e.what() << std::endl;
-        }
-        
-        std::unique_lock<std::mutex> lock(mutex_);
-        cv_.wait_for(lock, std::chrono::milliseconds(100), [this] { return !running_; });
-    }
-}
-
-Json::Value RPCServer::handleRequest(const std::string& request_str) {
-    Json::Value request;
-    Json::Reader reader;
-    
-    if (!reader.parse(request_str, request)) {
-        return createErrorResponse("Invalid JSON request");
-    }
-    
-    if (!request.isMember("method") || !request["method"].isString()) {
-        return createErrorResponse("Missing or invalid method name");
-    }
-    
-    std::string method_name = request["method"].asString();
-    std::lock_guard<std::mutex> lock(mutex_);
-    
-    auto it = handlers_.find(method_name);
-    if (it == handlers_.end()) {
-        return createErrorResponse("Method not found: " + method_name);
-    }
-    
+json RPCServer::handleRequest(const std::string& request_str) {
     try {
-        Json::Value result = it->second(request["params"]);
-        return createSuccessResponse(result);
-    } catch (const std::exception& e) {
-        return createErrorResponse(std::string("Method execution error: ") + e.what());
+        json request = json::parse(request_str);
+        
+        // 验证请求格式
+        if (!request.contains("jsonrpc") || !request.contains("method") || !request.contains("id")) {
+            return createErrorResponse(-32600, "Invalid Request");
+        }
+
+        if (request["jsonrpc"] != "2.0") {
+            return createErrorResponse(-32600, "Invalid Request: jsonrpc must be '2.0'");
+        }
+
+        std::string method = request["method"];
+        json params = request.value("params", json::array());
+        int id = request["id"];
+
+        // 查找并调用处理方法
+        auto it = handlers_.find(method);
+        if (it == handlers_.end()) {
+            return createErrorResponse(-32601, "Method not found: " + method, id);
+        }
+
+        try {
+            json result = it->second(params);
+            return createSuccessResponse(result, id);
+        } catch (const std::exception& e) {
+            return createErrorResponse(-32000, "Internal error: " + std::string(e.what()), id);
+        }
+    } catch (const json::parse_error& e) {
+        return createErrorResponse(-32700, "Parse error: " + std::string(e.what()));
     }
 }
 
-Json::Value RPCServer::createErrorResponse(const std::string& error_msg) {
-    Json::Value response;
-    response["error"] = error_msg;
-    response["success"] = false;
+json RPCServer::createErrorResponse(int code, const std::string& message, int id) {
+    json response;
+    response["jsonrpc"] = "2.0";
+    response["error"]["code"] = code;
+    response["error"]["message"] = message;
+    response["id"] = id;
     return response;
 }
 
-Json::Value RPCServer::createSuccessResponse(const Json::Value& result) {
-    Json::Value response;
+json RPCServer::createSuccessResponse(const json& result, int id) {
+    json response;
+    response["jsonrpc"] = "2.0";
     response["result"] = result;
-    response["success"] = true;
+    response["id"] = id;
     return response;
 }
 
 template<typename... Args>
-Json::Value RPCServer::callHandler(std::function<Json::Value(Args...)> handler,
-                                 const Json::Value& params) {
-    if (!params.isArray()) {
-        throw std::runtime_error("Parameters must be an array");
-    }
-    
-    if (params.size() != sizeof...(Args)) {
-        throw std::runtime_error("Parameter count mismatch");
-    }
-    
-    return std::apply(handler, deserializeArgs<Args...>(params));
+void RPCServer::registerMethod(const std::string& method_name, 
+                             std::function<json(Args...)> handler) {
+    handlers_[method_name] = [handler](const json& params) -> json {
+        return callHandlerImpl(handler, params);
+    };
 }
 
-template<typename... Args>
-std::tuple<Args...> deserializeArgs(const Json::Value& params) {
-    return std::make_tuple(deserializeArg<Args>(params[sizeof...(Args) - 1])...);
-}
-
-template<typename T>
-T deserializeArg(const Json::Value& value) {
-    return value.as<T>();
-} 
+// 显式实例化常用的模板
+template void RPCServer::registerMethod<>(const std::string&, std::function<json()>);
+template void RPCServer::registerMethod<int>(const std::string&, std::function<json(int)>);
+template void RPCServer::registerMethod<int, int>(const std::string&, std::function<json(int, int)>);
+template void RPCServer::registerMethod<std::string>(const std::string&, std::function<json(std::string)>);
+template void RPCServer::registerMethod<std::string, int>(const std::string&, std::function<json(std::string, int)>); 
