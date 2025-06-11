@@ -38,7 +38,7 @@ private:
     std::unique_ptr<ZmqService> zmq_service_;                    // ZeroMQ服务
 
     // 处理ZeroMQ消息
-    void handleZmqMessage(const std::string& message);
+    std::string handleZmqMessage(const std::string& message);
 };
 
 #endif // MANAGER_MANAGER_H_

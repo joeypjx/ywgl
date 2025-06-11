@@ -31,8 +31,8 @@ bool Manager::initialize() {
     
     // 初始化ZeroMQ服务
     zmq_service_ = std::make_unique<ZmqService>("tcp://*:5555");
-    zmq_service_->setMessageHandler([this](const std::string& message) {
-        handleZmqMessage(message);
+    zmq_service_->setMessageHandler([this](const std::string& message) -> std::string {
+        return handleZmqMessage(message);
     });
 
     std::cout << "[Manager] 初始化成功" << std::endl;
@@ -100,14 +100,11 @@ void Manager::stop() {
     std::cout << "[Manager] 已停止" << std::endl;
 }
 
-void Manager::handleZmqMessage(const std::string& message) {
+std::string Manager::handleZmqMessage(const std::string& message) {
     std::cout << "[Manager] 收到ZeroMQ消息: " << message << std::endl;
     
     // TODO: 根据消息内容处理不同的请求
     // 这里可以添加具体的消息处理逻辑
     
-    // 发送响应
-    if (zmq_service_) {
-        zmq_service_->send("已收到消息");
-    }
+    return "已收到消息: " + message;
 }
