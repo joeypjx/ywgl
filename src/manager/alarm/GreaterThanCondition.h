@@ -2,12 +2,12 @@
 #pragma once
 #include "IAlarmCondition.h"
 #include <sstream>
+#include <string>
 
 class GreaterThanCondition : public IAlarmCondition {
-private:
-    double threshold_;
 public:
-    explicit GreaterThanCondition(double t) : threshold_(t) {}
+    explicit GreaterThanCondition(double threshold) : threshold_(threshold) {}
+
     bool isTriggered(double value) const override {
         return value > threshold_;
     }
@@ -16,10 +16,15 @@ public:
         oss << "is greater than " << threshold_;
         return oss.str();
     }
-    double getThreshold() const {
+    std::string getType() const override { return "GreaterThan"; }
+    std::string getMetric() const { return ""; }
+    double getThreshold() const override {
         return threshold_;
     }
-    std::vector<std::shared_ptr<IAlarmCondition>> getConditions() const {
+    std::vector<std::shared_ptr<IAlarmCondition>> getConditions() const override {
         return {};
     }
+
+private:
+    double threshold_;
 };

@@ -2,10 +2,13 @@
 #include "database_manager.h"
 #include <iostream>
 #include <utility>
+#include <thread>
 
 HTTPServer::HTTPServer(std::shared_ptr<DatabaseManager> db_manager,
+                       std::shared_ptr<AlarmSubsystem> alarm_subsystem,
                        int port)
     : db_manager_(std::move(db_manager)),
+      alarm_subsystem_(std::move(alarm_subsystem)),
       port_(port),
       running_(false)
 {
@@ -30,6 +33,7 @@ bool HTTPServer::start()
 
         // 路由初始化
         initNodeRoutes();
+        initAlarmRoutes();
 
         // 启动服务器
         running_ = true;
@@ -38,7 +42,14 @@ bool HTTPServer::start()
             {"Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS"},
             {"Access-Control-Allow-Headers", "Content-Type"}
         });
-        server_.listen("0.0.0.0", port_);
+        std::thread([this]()
+                    {
+            if (!server_.listen("0.0.0.0", port_)) {
+                std::cerr << "Error: Server failed to start on port " << port_ << std::endl;
+                running_ = false;
+            } })
+            .detach();
+        std::cout << "HTTP server started on port " << port_ << std::endl;
 
         return true;
     } catch (const std::exception& e) {

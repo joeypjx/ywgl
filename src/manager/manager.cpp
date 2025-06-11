@@ -2,6 +2,7 @@
 #include "http_server.h"
 #include "database_manager.h"
 #include "multicast_announcer.h"
+#include "alarm/AlarmSubsystem.h"
 #include <iostream>
 #include <thread>
 #include <chrono>
@@ -25,7 +26,10 @@ bool Manager::initialize() {
         return false;
     }
 
-    http_server_ = std::make_unique<HTTPServer>(db_manager_, port_);
+    alarm_subsystem_ = std::make_shared<AlarmSubsystem>(db_manager_);
+    alarm_subsystem_->initialize();
+
+    http_server_ = std::make_unique<HTTPServer>(db_manager_, alarm_subsystem_, port_);
     multicast_announcer_ = std::make_unique<MulticastAnnouncer>(port_);
 
     std::cout << "[Manager] 初始化成功" << std::endl;
@@ -55,6 +59,10 @@ bool Manager::start() {
         multicast_announcer_->start();
     }
 
+    if (alarm_subsystem_) {
+        alarm_subsystem_->start();
+    }
+
     running_ = true;
     std::cout << "[Manager] 启动成功" << std::endl;
     return true;
@@ -67,6 +75,10 @@ void Manager::stop() {
     }
 
     std::cout << "[Manager] 停止..." << std::endl;
+
+    if (alarm_subsystem_) {
+        alarm_subsystem_->stop();
+    }
 
     if (http_server_) {
         http_server_->stop();

@@ -4,7 +4,7 @@
 #include <string>
 #include <vector>
 #include <memory>
-#include "DatabaseManager.h"
+#include "../database_manager.h"
 #include "nlohmann/json.hpp"
 #include "AlarmEventRepository.h"
 
@@ -28,6 +28,8 @@ public:
 
     // 从数据库加载所有告警模板
     std::vector<AlarmRuleTemplate> loadAllTemplates();
+    nlohmann::json loadAllTemplatesAsJson();
+    
     
     // (可选) 为了演示，提供一个保存模板的函数
     void saveTemplate(const AlarmRuleTemplate& tpl);
@@ -38,7 +40,11 @@ private:
     int saveConditionRecursive(const std::shared_ptr<IAlarmCondition>& condition);
 
     // 新增: 递归保存条件的辅助函数 (from JSON)
+    // 返回条件在数据库中的ID,用于建立条件之间的父子关系
     int saveConditionFromJsonRecursive(const json& j_cond);
     // 新增: 保存动作的辅助函数 (from JSON)
     std::vector<int> saveActionsFromJson(const json& j_actions);
+
+    // 新增: 递归加载条件并转换为JSON的辅助函数
+    json conditionToJsonRecursive(const std::shared_ptr<IAlarmCondition>& condition);
 };

@@ -7,6 +7,7 @@
 #include <map>
 #include <httplib.h>
 #include <nlohmann/json.hpp>
+#include "alarm/AlarmSubsystem.h"
 
 // 前向声明
 class DatabaseManager;
@@ -20,6 +21,7 @@ class HTTPServer {
 public:
     // 构造与析构
     HTTPServer(std::shared_ptr<DatabaseManager> db_manager, 
+               std::shared_ptr<AlarmSubsystem> alarm_subsystem,
               int port = 8080);
     ~HTTPServer();
 
@@ -29,11 +31,17 @@ public:
 
     // 路由初始化
     void initNodeRoutes();
+    void initAlarmRoutes();
 
     void handleResourceUpdate(const httplib::Request& req, httplib::Response& res);
     void handleGetAllNodes(const httplib::Request& req, httplib::Response& res);
     void handleHeartbeat(const httplib::Request& req, httplib::Response& res);
     void handleGetNodeMetrics(const httplib::Request& req, httplib::Response& res);
+    
+    // 告警相关路由处理
+    void handlePostAlarmRule(const httplib::Request& req, httplib::Response& res);
+    void handleGetAlarmRules(const httplib::Request& req, httplib::Response& res);
+    void handleGetAlarmEvents(const httplib::Request& req, httplib::Response& res);
 
     // 统一API响应方法
     void sendSuccessResponse(httplib::Response& res, const std::string& message);
@@ -48,6 +56,8 @@ protected:
 private:
     int port_;  // 监听端口
     bool running_;  // 是否正在运行
+
+    std::shared_ptr<AlarmSubsystem> alarm_subsystem_;
 };
 
 #endif // HTTP_SERVER_H

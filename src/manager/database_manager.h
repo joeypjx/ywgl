@@ -60,9 +60,14 @@ public:
     
     bool saveNodeResourceUsage(const nlohmann::json& resource_usage);
 
+    // Methods for shared access by sub-modules
+    SQLite::Database& getDb();
+    std::mutex& getMutex();
+
 private:
     std::string db_path_;                     // 数据库文件路径
     std::unique_ptr<SQLite::Database> db_;    // 数据库连接
+    mutable std::mutex db_mutex_;             // Shared mutex for database access
 
     // Node Status Monitor
     std::unique_ptr<std::thread> node_status_monitor_thread_;

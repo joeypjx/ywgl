@@ -7,6 +7,7 @@ CXXFLAGS = -std=c++14 -Wall -Wextra
 # 项目目录
 SRC_DIR = src
 MANAGER_DIR = $(SRC_DIR)/manager
+ALARM_DIR = $(MANAGER_DIR)/alarm
 BUILD_DIR = build
 
 # 依赖库目录
@@ -18,6 +19,7 @@ SQLITECPP_DIR = $(DEPS_DIR)/SQLiteCpp
 # 包含目录
 INCLUDES = -I$(SRC_DIR) \
           -I$(MANAGER_DIR) \
+          -I$(ALARM_DIR) \
           -I$(JSON_DIR)/include \
           -I$(HTTPLIB_DIR) \
           -I$(SQLITECPP_DIR)/include \
@@ -28,19 +30,17 @@ LIB_DIRS = -L/usr/local/lib \
            -L$(SQLITECPP_DIR)/build
 
 # Manager源文件
-MANAGER_SOURCES = $(MANAGER_DIR)/manager.cpp \
-                 $(MANAGER_DIR)/http_server.cpp \
-				 $(MANAGER_DIR)/http_server_node.cpp \
-				 $(MANAGER_DIR)/database_manager.cpp \
-				 $(MANAGER_DIR)/database_manager_node.cpp \
-				 $(MANAGER_DIR)/multicast_announcer.cpp \
-                 $(SRC_DIR)/manager_main.cpp 
+MANAGER_BASE_SOURCES = $(wildcard $(MANAGER_DIR)/*.cpp)
+ALARM_SOURCES = $(wildcard $(ALARM_DIR)/*.cpp)
+MANAGER_SOURCES = $(MANAGER_BASE_SOURCES) \
+				  $(ALARM_SOURCES) \
+                  $(SRC_DIR)/manager_main.cpp
 
 # 目标文件
 MANAGER_OBJECTS = $(MANAGER_SOURCES:%.cpp=$(BUILD_DIR)/%.o)
 
 # 依赖库
-MANAGER_LIBS = -lsqlite3 -lpthread -lSQLiteCpp -luuid 
+MANAGER_LIBS = -lsqlite3 -lpthread -lSQLiteCpp
 
 # 目标可执行文件
 MANAGER_TARGET = $(BUILD_DIR)/manager
@@ -52,6 +52,7 @@ all: prepare $(MANAGER_TARGET)
 prepare:
 	mkdir -p $(BUILD_DIR)/$(SRC_DIR)
 	mkdir -p $(BUILD_DIR)/$(MANAGER_DIR)
+	mkdir -p $(BUILD_DIR)/$(ALARM_DIR)
 
 # 编译Manager
 $(MANAGER_TARGET): $(MANAGER_OBJECTS)

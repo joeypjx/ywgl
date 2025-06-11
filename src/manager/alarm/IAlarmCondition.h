@@ -15,6 +15,9 @@ public:
     // 获取条件的文字描述
     virtual std::string getDescription() const = 0;
 
+    // 获取条件的类型
+    virtual std::string getType() const = 0;
+
     // 获取条件的阈值
     virtual double getThreshold() const = 0;
 

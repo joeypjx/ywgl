@@ -3,7 +3,7 @@
 #include <string>
 #include <memory>
 
-class AlarmRule; // 前向声明以避免循环依赖
+struct AlarmRule; // 前向声明以避免循环依赖
 
 // 告警动作接口，定义了告警触发后要执行的操作
 class IAlarmAction

@@ -118,6 +118,8 @@ void HTTPServer::handleResourceUpdate(const httplib::Request &req, httplib::Resp
             {"resource", data["resource"]}
         };
         
+        alarm_subsystem_->updateNodeMetrics(data["host_ip"], metrics_data["resource"]);
+
         if (db_manager_->saveNodeResourceUsage(metrics_data))
         {
             sendSuccessResponse(res, "Resource data updated successfully");

@@ -3,6 +3,7 @@
 #include <iostream>
 #include <chrono>
 #include <thread>
+#include <mutex>
 
 DatabaseManager::DatabaseManager(const std::string &db_path)
     : db_path_(db_path),
@@ -54,4 +55,14 @@ bool DatabaseManager::initialize()
         std::cerr << "[DatabaseManager] Database initialization error: " << e.what() << std::endl;
         return false;
     }
+}
+
+SQLite::Database& DatabaseManager::getDb()
+{
+    return *db_;
+}
+
+std::mutex& DatabaseManager::getMutex()
+{
+    return db_mutex_;
 }

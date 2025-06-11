@@ -1,11 +1,12 @@
 // OrCondition.h
 #pragma once
 #include "IAlarmCondition.h"
+#include "ILogicalCondition.h"
 #include <vector>
 #include <memory>
 #include <sstream>
 
-class OrCondition : public IAlarmCondition {
+class OrCondition : public ILogicalCondition {
 private:
     std::vector<std::shared_ptr<IAlarmCondition>> conditions_;
 
@@ -34,10 +35,15 @@ public:
         ss << ")";
         return ss.str();
     }
-    double getThreshold() const {
+
+    std::string getType() const override { return "Or"; }
+
+    double getThreshold() const override {
+        // 对于逻辑组合条件，阈值没有直接意义，可以返回一个特殊值
         return 0.0;
     }
-    std::vector<std::shared_ptr<IAlarmCondition>> getConditions() const {
+
+    std::vector<std::shared_ptr<IAlarmCondition>> getConditions() const override {
         return conditions_;
     }
 };

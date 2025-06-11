@@ -1,5 +1,4 @@
-#ifndef MANAGER_MANAGER_H_
-#define MANAGER_MANAGER_H_
+#pragma once
 
 #include <string>
 #include <memory>
@@ -9,6 +8,7 @@
 class HTTPServer;
 class DatabaseManager;
 class MulticastAnnouncer;
+class AlarmSubsystem;
 
 /**
  * @brief 系统中心管理器，协调各模块
@@ -31,9 +31,8 @@ private:
     std::string db_path_;  // 数据库文件路径
     std::atomic<bool> running_; // 运行标志
 
-    std::unique_ptr<HTTPServer> http_server_;                    // HTTP服务器
     std::shared_ptr<DatabaseManager> db_manager_;                // 数据库管理器
+    std::unique_ptr<HTTPServer> http_server_;                    // HTTP服务器
     std::unique_ptr<MulticastAnnouncer> multicast_announcer_;    // 组播公告器
+    std::shared_ptr<AlarmSubsystem> alarm_subsystem_;            // 新增成员
 };
-
-#endif // MANAGER_MANAGER_H_
