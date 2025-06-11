@@ -14,6 +14,7 @@ DEPS_DIR = deps
 JSON_DIR = $(DEPS_DIR)/nlohmann_json
 HTTPLIB_DIR = $(DEPS_DIR)/cpp-httplib
 SQLITECPP_DIR = $(DEPS_DIR)/SQLiteCpp
+ZMQ_DIR = $(DEPS_DIR)/libzmq
 
 # 包含目录
 INCLUDES = -I$(SRC_DIR) \
@@ -21,8 +22,8 @@ INCLUDES = -I$(SRC_DIR) \
           -I$(JSON_DIR)/include \
           -I$(HTTPLIB_DIR) \
           -I$(SQLITECPP_DIR)/include \
-          -I/usr/local/include \
-          -I/usr/include/zmq
+		  -I$(ZMQ_DIR)/ \
+          -I/usr/local/include 
 
 # 库目录
 LIB_DIRS = -L/usr/local/lib \

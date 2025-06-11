@@ -4,8 +4,13 @@
 ZmqService::ZmqService(const std::string& endpoint)
     : endpoint_(endpoint)
     , running_(false) {
-    context_ = std::make_unique<zmq::context_t>(1);
-    socket_ = std::make_unique<zmq::socket_t>(*context_, ZMQ_REP);
+    try {
+        context_ = std::make_unique<zmq::context_t>(1);
+        socket_ = std::make_unique<zmq::socket_t>(*context_, ZMQ_REP);
+    } catch (const zmq::error_t& e) {
+        std::cerr << "Failed to initialize ZMQ service: " << e.what() << std::endl;
+        throw;
+    }
 }
 
 ZmqService::~ZmqService() {
@@ -38,21 +43,27 @@ void ZmqService::stop() {
     }
     
     try {
-        socket_->close();
+        if (socket_) {
+            socket_->close();
+        }
+        if (context_) {
+            context_->close();
+        }
     } catch (const zmq::error_t& e) {
-        std::cerr << "Error closing ZMQ socket: " << e.what() << std::endl;
+        std::cerr << "Error closing ZMQ resources: " << e.what() << std::endl;
     }
 }
 
 bool ZmqService::send(const std::string& message) {
-    if (!running_) {
+    if (!running_ || !socket_) {
         return false;
     }
 
     try {
         zmq::message_t zmq_message(message.size());
         memcpy(zmq_message.data(), message.data(), message.size());
-        return socket_->send(zmq_message, zmq::send_flags::none);
+        auto result = socket_->send(zmq_message, zmq::send_flags::none);
+        return result.has_value();
     } catch (const zmq::error_t& e) {
         std::cerr << "Failed to send message: " << e.what() << std::endl;
         return false;
@@ -69,7 +80,7 @@ void ZmqService::run() {
             zmq::message_t message;
             auto result = socket_->recv(message, zmq::recv_flags::none);
             
-            if (result) {
+            if (result.has_value()) {
                 std::string received_message(static_cast<char*>(message.data()), message.size());
                 handleMessage(received_message);
             }
@@ -84,6 +95,10 @@ void ZmqService::run() {
 
 void ZmqService::handleMessage(const std::string& message) {
     if (message_handler_) {
-        message_handler_(message);
+        try {
+            message_handler_(message);
+        } catch (const std::exception& e) {
+            std::cerr << "Error in message handler: " << e.what() << std::endl;
+        }
     }
 } 
