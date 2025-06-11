@@ -70,7 +70,7 @@ bool ZmqService::send(const std::string& message) {
     }
 }
 
-void ZmqService::setMessageHandler(std::function<void(const std::string&)> handler) {
+void ZmqService::setMessageHandler(std::function<std::string(const std::string&)> handler) {
     message_handler_ = std::move(handler);
 }
 
@@ -82,7 +82,8 @@ void ZmqService::run() {
             
             if (result.has_value()) {
                 std::string received_message(static_cast<char*>(message.data()), message.size());
-                handleMessage(received_message);
+                std::string response = handleMessage(received_message);
+                send(response);
             }
         } catch (const zmq::error_t& e) {
             if (e.num() != ETERM) {  // 忽略终止错误
@@ -93,12 +94,14 @@ void ZmqService::run() {
     }
 }
 
-void ZmqService::handleMessage(const std::string& message) {
+std::string ZmqService::handleMessage(const std::string& message) {
     if (message_handler_) {
         try {
-            message_handler_(message);
+            return message_handler_(message);
         } catch (const std::exception& e) {
             std::cerr << "Error in message handler: " << e.what() << std::endl;
+            return "Error: " + std::string(e.what());
         }
     }
+    return "No message handler set";
 } 

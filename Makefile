@@ -14,7 +14,7 @@ DEPS_DIR = deps
 JSON_DIR = $(DEPS_DIR)/nlohmann_json
 HTTPLIB_DIR = $(DEPS_DIR)/cpp-httplib
 SQLITECPP_DIR = $(DEPS_DIR)/SQLiteCpp
-ZMQ_DIR = $(DEPS_DIR)/libzmq
+ZMQ_DIR = $(DEPS_DIR)/cppzmq
 
 # 包含目录
 INCLUDES = -I$(SRC_DIR) \

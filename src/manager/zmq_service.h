@@ -19,8 +19,8 @@ public:
     void stop();
     // 发送消息
     bool send(const std::string& message);
-    // 设置消息处理回调
-    void setMessageHandler(std::function<void(const std::string&)> handler);
+    // 设置消息处理回调，返回处理结果
+    void setMessageHandler(std::function<std::string(const std::string&)> handler);
 
 private:
     void run();
@@ -31,7 +31,7 @@ private:
     std::unique_ptr<zmq::socket_t> socket_;
     std::thread worker_thread_;
     std::atomic<bool> running_;
-    std::function<void(const std::string&)> message_handler_;
+    std::function<std::string(const std::string&)> message_handler_;
 };
 
 #endif // ZMQ_SERVICE_H 
