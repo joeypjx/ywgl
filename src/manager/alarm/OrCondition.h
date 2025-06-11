@@ -34,4 +34,10 @@ public:
         ss << ")";
         return ss.str();
     }
+    double getThreshold() const {
+        return 0.0;
+    }
+    std::vector<std::shared_ptr<IAlarmCondition>> getConditions() const {
+        return conditions_;
+    }
 };

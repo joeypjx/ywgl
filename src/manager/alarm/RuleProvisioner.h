@@ -32,9 +32,17 @@ private:
                     std::cout << "[Provisioner] New rule needed for '" << ruleId << "'. Creating..." << std::endl;
                     AlarmRule newRule;
                     newRule.ruleId = ruleId;
+                    newRule.templateId = tpl.templateId;
+                    newRule.nodeId = nodeId;
+                    newRule.metricName = tpl.metricName;
+                    newRule.alarmType = tpl.alarmType;
+                    newRule.alarmLevel = tpl.alarmLevel;
+                    newRule.contentTemplate = tpl.contentTemplate;
+                    newRule.triggerCountThreshold = tpl.triggerCountThreshold;
                     newRule.resource = std::make_shared<AgentResource>(nodeId, tpl.metricName, metricCache_);
                     newRule.condition = tpl.condition;
                     newRule.actions = tpl.actions;
+                    newRule.isTriggeredState = false;
                     alarmManager_->addRule(newRule);
                 }
             }

@@ -1,79 +1,37 @@
 // AlarmManager.h
 #pragma once
+
 #include "AlarmRule.h"
+#include "AlarmEventRepository.h"
 #include <map>
 #include <string>
-#include <set>
-#include <thread>
-#include <mutex>
-#include <atomic>
-#include <chrono>
+#include <memory>
 #include <iostream>
+#include <mutex>
+#include <set>
+#include <algorithm> // For std::remove_if
+#include <thread>
+#include <chrono>
 
-// 告警管理器，负责检查已实例化的规则
 class AlarmManager {
-private:
-    std::map<std::string, AlarmRule> rules_;
-    mutable std::mutex rulesMutex_;
-    std::atomic<bool> stopRequested_{false};
-    std::thread workerThread_;
-
-    void checkAlarms() {
-        // 复制一份规则列表进行检查，避免长时间锁定
-        std::map<std::string, AlarmRule> rulesToCheck;
-        {
-            std::lock_guard<std::mutex> lock(rulesMutex_);
-            rulesToCheck = rules_;
-        }
-
-        for (auto& pair : rulesToCheck) {
-            AlarmRule& rule = pair.second;
-            double currentValue = rule.resource->getValue();
-            bool triggered = rule.condition->isTriggered(currentValue);
-
-            if (triggered && !rule.isCurrentlyTriggered) {
-                // 状态从 Normal -> Triggered
-                for (const auto& action : rule.actions) {
-                    action->execute(rule.ruleId, rule.resource->getName());
-                }
-                updateRuleState(rule.ruleId, true); // 更新主列表中的状态
-            } else if (!triggered && rule.isCurrentlyTriggered) {
-                // 状态从 Triggered -> Normal
-                std::cout << "[INFO] Alarm '" << rule.ruleId << "' has recovered." << std::endl;
-                    for (const auto& action : rule.recoveryActions) { // 执行恢复动作
-                    action->execute(rule.ruleId, rule.resource->getName());
-                }
-                updateRuleState(rule.ruleId, false);
-            }
-        }
-    }
-    
-    void updateRuleState(const std::string& ruleId, bool isTriggered) {
-        std::lock_guard<std::mutex> lock(rulesMutex_);
-        auto it = rules_.find(ruleId);
-        if (it != rules_.end()) {
-            it->second.isCurrentlyTriggered = isTriggered;
-        }
-    }
-
-    void run() {
-        while (!stopRequested_) {
-            checkAlarms();
-            std::this_thread::sleep_for(std::chrono::seconds(5));
-        }
-    }
-
 public:
+    // 构造函数，注入事件仓库
+    explicit AlarmManager()
+    {}
+
+    // 添加或更新规则
     void addRule(const AlarmRule& rule) {
         std::lock_guard<std::mutex> lock(rulesMutex_);
         rules_[rule.ruleId] = rule;
     }
 
+    // 移除规则
     void removeRule(const std::string& ruleId) {
         std::lock_guard<std::mutex> lock(rulesMutex_);
         rules_.erase(ruleId);
     }
-
+    
+    // 获取当前管理的所有规则ID
     std::set<std::string> getManagedRuleIds() const {
         std::lock_guard<std::mutex> lock(rulesMutex_);
         std::set<std::string> ids;
@@ -83,18 +41,60 @@ public:
         return ids;
     }
 
+    // 定期检查所有告警
+    void checkAlarms() {
+        std::lock_guard<std::mutex> lock(rulesMutex_);
+        for (auto& pair : rules_) {
+            auto& rule = pair.second;
+            double currentValue = rule.resource->getValue();
+            bool conditionMet = rule.condition->isTriggered(currentValue);
+
+            rule.lastTriggeredValue = currentValue; // 记录当前值
+
+            if (conditionMet) {
+                // 条件满足，增加连续触发计数
+                rule.consecutiveTriggerCount++;
+
+                // 仅当连续触发次数达到阈值，并且当前未处于告警状态时，才触发告警
+                if (rule.consecutiveTriggerCount >= rule.triggerCountThreshold && !rule.isTriggeredState) {
+                    rule.isTriggeredState = true;
+                    for (const auto& action : rule.actions) {
+                        action->execute(rule);
+                    }
+                }
+            } else {
+                // 条件不满足
+                // 如果之前处于告警状态，发送恢复通知
+                if (rule.isTriggeredState) {
+                    rule.isTriggeredState = false;
+                    for (const auto& action : rule.actions) {
+                        action->execute(rule);
+                    }
+                }
+                // 重置连续触发计数
+                rule.consecutiveTriggerCount = 0;
+            }
+        }
+    }
+
     void start() {
-        if (workerThread_.joinable()) return;
-        stopRequested_ = false;
-        workerThread_ = std::thread(&AlarmManager::run, this);
-        std::cout << "[AlarmManager] Started." << std::endl;
+        workerThread_ = std::thread([this]() {
+            while (true) {
+                checkAlarms();
+                std::this_thread::sleep_for(std::chrono::seconds(1));
+            }
+        });
+        workerThread_.detach();
     }
 
     void stop() {
-        stopRequested_ = true;
         if (workerThread_.joinable()) {
             workerThread_.join();
         }
-        std::cout << "[AlarmManager] Stopped." << std::endl;
     }
+
+private:
+    std::map<std::string, AlarmRule> rules_;
+    mutable std::mutex rulesMutex_;
+    std::thread workerThread_;
 };

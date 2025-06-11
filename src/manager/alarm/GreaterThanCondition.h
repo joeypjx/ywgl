@@ -16,4 +16,10 @@ public:
         oss << "is greater than " << threshold_;
         return oss.str();
     }
+    double getThreshold() const {
+        return threshold_;
+    }
+    std::vector<std::shared_ptr<IAlarmCondition>> getConditions() const {
+        return {};
+    }
 };

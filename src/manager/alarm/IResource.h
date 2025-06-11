@@ -12,4 +12,10 @@ public:
     
     // 获取资源的名称
     virtual std::string getName() const = 0;
+
+    // 获取资源的指标名称
+    virtual std::string getMetricName() const = 0;
+
+    // 获取资源的节点ID
+    virtual std::string getNodeId() const = 0;
 };

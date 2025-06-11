@@ -23,4 +23,12 @@ public:
     std::string getName() const override {
         return "Metric '" + metricName_ + "' on node '" + nodeId_ + "'";
     }
+
+    std::string getMetricName() const override {
+        return metricName_;
+    }
+
+    std::string getNodeId() const override {
+        return nodeId_;
+    }
 };

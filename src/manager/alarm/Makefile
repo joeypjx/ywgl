@@ -1,10 +1,10 @@
 # Makefile for alarm_manager
 
 CXX = g++
-CXXFLAGS = -std=c++11 -Wall -O2
+CXXFLAGS = -std=c++14 -Wall -O2
 TARGET = alarm_manager
 SRCDIR = .
-SRC = $(SRCDIR)/main.cpp
+SRC = $(wildcard $(SRCDIR)/*.cpp)
 OBJ = $(SRC:.cpp=.o)
 DEPS = $(wildcard $(SRCDIR)/*.h)
 DEPS_DIR = ../../../deps

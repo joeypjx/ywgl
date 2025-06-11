@@ -8,10 +8,32 @@
 #include <utility>
 #include <nlohmann/json.hpp>
 #include <iostream>
+#include <regex> // 用于解析自定义路径
 using json = nlohmann::json;
 
 // 节点的指标快照
 using MetricSnapshot = json;
+
+namespace {
+// 辅助结构体，用于存储解析后的路径信息
+struct MetricPath {
+    bool isComplex = false;
+    std::string arrayKey;
+    std::string matchKey;
+    std::string matchValue;
+    std::string targetKey;
+};
+
+// 解析自定义的指标路径，例如 "disk[path=/dev/sda1].usage_percent"
+MetricPath parseMetricPath(const std::string& path) {
+    static const std::regex re(R"((\w+)\[(\w+)=([^\]]+)\]\.(\w+))");
+    std::smatch match;
+    if (std::regex_match(path, match, re) && match.size() == 5) {
+        return {true, match[1], match[2], match[3], match[4]};
+    }
+    return {false};
+}
+}
 
 // 线程安全的中心化缓存，存储所有节点的最新指标
 class MetricCache {
@@ -35,13 +57,40 @@ public:
     double getMetric(const std::string& nodeId, const std::string& metricName) const {
         std::lock_guard<std::mutex> lock(mutex_);
         auto nodeIt = cache_.find(nodeId);
-        if (nodeIt != cache_.end()) {
-            const auto& metrics = nodeIt->second.metrics;
-            // 打印metrics
+        if (nodeIt == cache_.end()) {
+            return 0.0;
+        }
+
+        const auto& metrics = nodeIt->second.metrics;
+
+        // 1. 尝试解析自定义路径
+        MetricPath path = parseMetricPath(metricName);
+        if (path.isComplex) {
+            if (metrics.contains(path.arrayKey) && metrics[path.arrayKey].is_array()) {
+                for (const auto& item : metrics[path.arrayKey]) {
+                    if (item.contains(path.matchKey) && item[path.matchKey].get<std::string>() == path.matchValue) {
+                        if (item.contains(path.targetKey)) {
+                            return item[path.targetKey].get<double>();
+                        }
+                    }
+                }
+            }
+            return 0.0; // 未找到匹配项
+        }
+
+        // 2. 如果不是自定义路径，回退到JSON Pointer
+        try {
+            json::json_pointer ptr(metricName);
+            if (metrics.contains(ptr)) {
+                return metrics.at(ptr).get<double>();
+            }
+        } catch (json::parse_error&) {
+            // 3. 如果也不是JSON Pointer，回退到普通key
             if (metrics.contains(metricName)) {
                 return metrics.at(metricName).get<double>();
             }
         }
+        
         return 0.0;
     }
 

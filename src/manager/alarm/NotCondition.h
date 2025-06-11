@@ -19,4 +19,11 @@ public:
     std::string getDescription() const override {
         return "NOT (" + condition_->getDescription() + ")";
     }
+
+    double getThreshold() const {
+        return 0.0;
+    }
+    std::vector<std::shared_ptr<IAlarmCondition>> getConditions() const {
+        return {condition_};
+    }
 };
