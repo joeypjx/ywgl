@@ -21,7 +21,8 @@ INCLUDES = -I$(SRC_DIR) \
           -I$(JSON_DIR)/include \
           -I$(HTTPLIB_DIR) \
           -I$(SQLITECPP_DIR)/include \
-          -I/usr/local/include
+          -I/usr/local/include \
+          -I/usr/include/zmq
 
 # 库目录
 LIB_DIRS = -L/usr/local/lib \
@@ -34,13 +35,14 @@ MANAGER_SOURCES = $(MANAGER_DIR)/manager.cpp \
 				 $(MANAGER_DIR)/database_manager.cpp \
 				 $(MANAGER_DIR)/database_manager_node.cpp \
 				 $(MANAGER_DIR)/multicast_announcer.cpp \
+                 $(MANAGER_DIR)/zmq_service.cpp \
                  $(SRC_DIR)/manager_main.cpp 
 
 # 目标文件
 MANAGER_OBJECTS = $(MANAGER_SOURCES:%.cpp=$(BUILD_DIR)/%.o)
 
 # 依赖库
-MANAGER_LIBS = -lsqlite3 -lpthread -lSQLiteCpp -luuid 
+MANAGER_LIBS = -lsqlite3 -lpthread -lSQLiteCpp -luuid -lzmq
 
 # 目标可执行文件
 MANAGER_TARGET = $(BUILD_DIR)/manager
@@ -77,6 +79,7 @@ deps:
 	@ldconfig -p | grep libcurl > /dev/null || (echo "错误: 需要安装 libcurl" && exit 1)
 	@ldconfig -p | grep libuuid > /dev/null || (echo "错误: 需要安装 libuuid" && exit 1)
 	@ldconfig -p | grep libsqlite3 > /dev/null || (echo "错误: 需要安装 libsqlite3" && exit 1)
+	@ldconfig -p | grep libzmq > /dev/null || (echo "错误: 需要安装 libzmq" && exit 1)
 	@echo "所有依赖已满足"
 
 # 帮助

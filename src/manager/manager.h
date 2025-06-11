@@ -9,6 +9,7 @@
 class HTTPServer;
 class DatabaseManager;
 class MulticastAnnouncer;
+class ZmqService;
 
 /**
  * @brief 系统中心管理器，协调各模块
@@ -34,6 +35,10 @@ private:
     std::unique_ptr<HTTPServer> http_server_;                    // HTTP服务器
     std::shared_ptr<DatabaseManager> db_manager_;                // 数据库管理器
     std::unique_ptr<MulticastAnnouncer> multicast_announcer_;    // 组播公告器
+    std::unique_ptr<ZmqService> zmq_service_;                    // ZeroMQ服务
+
+    // 处理ZeroMQ消息
+    void handleZmqMessage(const std::string& message);
 };
 
 #endif // MANAGER_MANAGER_H_
