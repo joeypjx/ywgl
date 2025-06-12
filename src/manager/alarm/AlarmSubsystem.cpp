@@ -48,7 +48,7 @@ void AlarmSubsystem::initialize() {
         {"alarmLevel", "critical"},
         {"triggerCountThreshold", 3},
         {"contentTemplate", "{state} 节点 {nodeId} 发生 {alarmLevel} 告警，指标 {metricName} 值为 {value}"},
-        {"condition", {{"type", "GreaterThan"}, {"params", {{"threshold", 5.0}}}}},
+        {"condition", {{"type", "GreaterThan"}, {"threshold", 5.0}}},
         {"actions", {{{"type", "Log"}}, {{"type", "Database"}}}}
     };
     json high_disk_tpl = {
@@ -59,8 +59,8 @@ void AlarmSubsystem::initialize() {
         {"triggerCountThreshold", 2},
         {"contentTemplate", "{state} 节点 {nodeId} 发生 {alarmLevel} 告警，指标 {metricName} 值为 {value}"},
         {"condition", {{"type", "And"}, {"conditions", {
-            {{"type", "GreaterThan"}, {"params", {{"threshold", 80.0}}}},
-            {{"type", "LessThan"}, {"params", {{"threshold", 95.0}}}}
+            {{"type", "GreaterThan"}, {"threshold", 80.0}},
+            {{"type", "LessThan"}, {"threshold", 95.0}}
         }}}},
         {"actions", {{{"type", "Log"}}, {{"type", "Database"}}}}
     };

@@ -36,10 +36,27 @@ void TemplateRepository::createTables()
             "trigger_count_threshold INTEGER NOT NULL, "
             "root_condition_id INTEGER NOT NULL, "
             "FOREIGN KEY (root_condition_id) REFERENCES alarm_conditions(id))");
-    db.exec("CREATE TABLE IF NOT EXISTS alarm_conditions (id INTEGER PRIMARY KEY AUTOINCREMENT, condition_type TEXT NOT NULL, params_json TEXT)");
-    db.exec("CREATE TABLE IF NOT EXISTS alarm_condition_composition (parent_condition_id INTEGER NOT NULL, child_condition_id INTEGER NOT NULL, child_order INTEGER NOT NULL, PRIMARY KEY (parent_condition_id, child_condition_id), FOREIGN KEY (parent_condition_id) REFERENCES alarm_conditions(id), FOREIGN KEY (child_condition_id) REFERENCES alarm_conditions(id))");
-    db.exec("CREATE TABLE IF NOT EXISTS alarm_actions (id INTEGER PRIMARY KEY AUTOINCREMENT, action_type TEXT NOT NULL, params_json TEXT)");
-    db.exec("CREATE TABLE IF NOT EXISTS alarm_template_actions (template_id TEXT NOT NULL, action_id INTEGER NOT NULL, PRIMARY KEY (template_id, action_id), FOREIGN KEY (template_id) REFERENCES alarm_templates(template_id), FOREIGN KEY (action_id) REFERENCES alarm_actions(id))");
+    db.exec("CREATE TABLE IF NOT EXISTS alarm_conditions ("
+            "id INTEGER PRIMARY KEY AUTOINCREMENT, "
+            "condition_type TEXT NOT NULL, "
+            "threshold REAL)");
+    db.exec("CREATE TABLE IF NOT EXISTS alarm_condition_composition ("
+            "parent_condition_id INTEGER NOT NULL, "
+            "child_condition_id INTEGER NOT NULL, "
+            "child_order INTEGER NOT NULL, "
+            "PRIMARY KEY (parent_condition_id, child_condition_id), "
+            "FOREIGN KEY (parent_condition_id) REFERENCES alarm_conditions(id), "
+            "FOREIGN KEY (child_condition_id) REFERENCES alarm_conditions(id))");
+    db.exec("CREATE TABLE IF NOT EXISTS alarm_actions ("
+            "id INTEGER PRIMARY KEY AUTOINCREMENT, "
+            "action_type TEXT NOT NULL, "
+            "params_json TEXT)");
+    db.exec("CREATE TABLE IF NOT EXISTS alarm_template_actions ("
+            "template_id TEXT NOT NULL, "
+            "action_id INTEGER NOT NULL, "
+            "PRIMARY KEY (template_id, action_id), "
+            "FOREIGN KEY (template_id) REFERENCES alarm_templates(template_id), "
+            "FOREIGN KEY (action_id) REFERENCES alarm_actions(id))");
     transaction.commit();
     std::cout << "[DB] Tables created or verified." << std::endl;
 }
@@ -47,7 +64,7 @@ void TemplateRepository::createTables()
 std::shared_ptr<IAlarmCondition> TemplateRepository::loadConditionRecursive(int conditionId)
 {
     auto &db = dbManager_->getDb();
-    SQLite::Statement query(db, "SELECT condition_type, params_json FROM alarm_conditions WHERE id = ?");
+    SQLite::Statement query(db, "SELECT condition_type, threshold FROM alarm_conditions WHERE id = ?");
     query.bind(1, conditionId);
 
     if (!query.executeStep())
@@ -56,16 +73,15 @@ std::shared_ptr<IAlarmCondition> TemplateRepository::loadConditionRecursive(int 
     }
 
     std::string type = query.getColumn(0).getText();
-    std::string params_str = query.getColumn(1).getText();
-    json params = params_str.empty() || params_str == "null" ? json::object() : json::parse(params_str);
+    double threshold = query.getColumn(1).getDouble();
 
     if (type == "GreaterThan")
     {
-        return std::make_shared<GreaterThanCondition>(params.at("threshold").get<double>());
+        return std::make_shared<GreaterThanCondition>(threshold);
     }
     if (type == "LessThan")
     {
-        return std::make_shared<LessThanCondition>(params.at("threshold").get<double>());
+        return std::make_shared<LessThanCondition>(threshold);
     }
     
     std::vector<std::shared_ptr<IAlarmCondition>> childConditions;
@@ -140,14 +156,14 @@ std::vector<AlarmRuleTemplate> TemplateRepository::loadAllTemplates()
 int TemplateRepository::saveConditionRecursive(const std::shared_ptr<IAlarmCondition>& condition)
 {
     std::string type;
-    json params;
+    double threshold = 0.0;
 
     if (auto p = std::dynamic_pointer_cast<GreaterThanCondition>(condition)) {
         type = "GreaterThan";
-        params["threshold"] = p->getThreshold();
+        threshold = p->getThreshold();
     } else if (auto p = std::dynamic_pointer_cast<LessThanCondition>(condition)) {
         type = "LessThan";
-        params["threshold"] = p->getThreshold();
+        threshold = p->getThreshold();
     } else if (std::dynamic_pointer_cast<AndCondition>(condition)) {
         type = "And";
     } else if (std::dynamic_pointer_cast<OrCondition>(condition)) {
@@ -159,9 +175,9 @@ int TemplateRepository::saveConditionRecursive(const std::shared_ptr<IAlarmCondi
     }
 
     auto &db = dbManager_->getDb();
-    SQLite::Statement insert_cond(db, "INSERT INTO alarm_conditions (condition_type, params_json) VALUES (?, ?)");
+    SQLite::Statement insert_cond(db, "INSERT INTO alarm_conditions (condition_type, threshold) VALUES (?, ?)");
     insert_cond.bind(1, type);
-    insert_cond.bind(2, params.is_null() || params.empty() ? "{}" : params.dump());
+    insert_cond.bind(2, threshold);
     insert_cond.exec();
 
     int parent_id = db.getLastInsertRowid();
@@ -265,13 +281,10 @@ json TemplateRepository::conditionToJsonRecursive(const std::shared_ptr<IAlarmCo
 
     json j;
     j["type"] = condition->getType();
-    j["description"] = condition->getDescription();
 
     if (auto gt = std::dynamic_pointer_cast<GreaterThanCondition>(condition)) {
-        j["metric"] = gt->getMetric();
         j["threshold"] = gt->getThreshold();
     } else if (auto lt = std::dynamic_pointer_cast<LessThanCondition>(condition)) {
-        j["metric"] = lt->getMetric();
         j["threshold"] = lt->getThreshold();
     }
 
@@ -344,11 +357,16 @@ int TemplateRepository::saveConditionFromJsonRecursive(const json& j_cond) {
     auto& db = dbManager_->getDb();
 
     std::string type = j_cond.at("type").get<std::string>();
-    json params = j_cond.value("params", json::object());
+    double threshold = 0.0;
 
-    SQLite::Statement insert_cond(db, "INSERT INTO alarm_conditions (condition_type, params_json) VALUES (?, ?)");
+    // 对于简单条件，直接从threshold字段获取值
+    if (type == "GreaterThan" || type == "LessThan") {
+        threshold = j_cond.at("threshold").get<double>();
+    }
+
+    SQLite::Statement insert_cond(db, "INSERT INTO alarm_conditions (condition_type, threshold) VALUES (?, ?)");
     insert_cond.bind(1, type);
-    insert_cond.bind(2, params.dump());
+    insert_cond.bind(2, threshold);
     insert_cond.exec();
     
     int parent_id = db.getLastInsertRowid();
