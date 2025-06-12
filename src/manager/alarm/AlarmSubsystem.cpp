@@ -42,18 +42,18 @@ void AlarmSubsystem::initialize() {
 
     // 创建示例告警模板
     json high_cpu_tpl = {
-        {"templateId", "高CPU使用率-严重"},
+        {"templateId", "CPU使用率-严重"},
         {"metricName", "cpu.usage_percent"},
         {"alarmType", "system"},
         {"alarmLevel", "critical"},
         {"triggerCountThreshold", 3},
         {"contentTemplate", "{state} 节点 {nodeId} 发生 {alarmLevel} 告警，指标 {metricName} 值为 {value}"},
-        {"condition", {{"type", "GreaterThan"}, {"params", {{"threshold", 90.0}}}}},
+        {"condition", {{"type", "GreaterThan"}, {"params", {{"threshold", 5.0}}}}},
         {"actions", {{{"type", "Log"}}, {{"type", "Database"}}}}
     };
     json high_disk_tpl = {
-        {"templateId", "中磁盘使用率-警告"},
-        {"metricName", "disk[path=/dev/sda1].usage_percent"},
+        {"templateId", "磁盘使用率-警告"},
+        {"metricName", "disk[mount_point=/].usage_percent"},
         {"alarmType", "system"},
         {"alarmLevel", "warning"},
         {"triggerCountThreshold", 2},
@@ -84,19 +84,11 @@ void AlarmSubsystem::initialize() {
 void AlarmSubsystem::start() {
     manager_->start();
     provisioner_->start();
-    
-    // 启动模拟器线程
-    stop_signal_ = false;
-    simulator_thread_ = std::thread(&AlarmSubsystem::runDataSimulator, this);
-    
     std::cout << "[AlarmSubsystem] Started." << std::endl;
 }
 
 void AlarmSubsystem::stop() {
     stop_signal_ = true;
-    if (simulator_thread_.joinable()) {
-        simulator_thread_.join();
-    }
     provisioner_->stop();
     manager_->stop();
     std::cout << "[AlarmSubsystem] Stopped." << std::endl;
@@ -130,27 +122,4 @@ nlohmann::json AlarmSubsystem::getAllAlarmEventsAsJson(int limit) {
         return eventRepo_->getAllEventsAsJson(limit);
     }
     throw std::runtime_error("AlarmEventRepository is not initialized.");
-}
-
-// 内部的模拟器函数，逻辑从旧main.cpp迁移而来
-void AlarmSubsystem::runDataSimulator() {
-    std::cout << "[Simulator] Started." << std::endl;
-    std::default_random_engine generator(std::random_device{}());
-    std::uniform_real_distribution<double> normal_dist(10.0, 40.0);
-    std::uniform_real_distribution<double> high_dist(90.0, 99.0);
-
-    while (!stop_signal_) {
-        cache_->updateNodeMetrics("node-01", json{
-            {"cpu.usage_percent", high_dist(generator)},
-            {"memory.usage_percent", normal_dist(generator)},
-            {"disk", json::array({
-                {{"path", "/dev/sda1"}, {"usage_percent", high_dist(generator)}},
-                {{"path", "/dev/sdb1"}, {"usage_percent", normal_dist(generator)}}
-            })}
-        });
-        cache_->updateNodeMetrics("node-02", json{{"cpu_usage_percent", normal_dist(generator)}});
-        
-        std::this_thread::sleep_for(std::chrono::seconds(2));
-    }
-    std::cout << "[Simulator] Stopped." << std::endl;
 } 

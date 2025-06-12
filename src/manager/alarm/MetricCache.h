@@ -24,13 +24,22 @@ struct MetricPath {
     std::string targetKey;
 };
 
-// 解析自定义的指标路径，例如 "disk[path=/dev/sda1].usage_percent"
+// 解析自定义的指标路径，例如 "disk[path=/dev/sda1].usage_percent" 或 "cpu.usage_percent"
 MetricPath parseMetricPath(const std::string& path) {
-    static const std::regex re(R"((\w+)\[(\w+)=([^\]]+)\]\.(\w+))");
-    std::smatch match;
-    if (std::regex_match(path, match, re) && match.size() == 5) {
-        return {true, match[1], match[2], match[3], match[4]};
+    // 尝试匹配复杂路径格式：disk[path=/dev/sda1].usage_percent
+    static const std::regex complexRe(R"((\w+)\[(\w+)=([^\]]+)\]\.(\w+))");
+    std::smatch complexMatch;
+    if (std::regex_match(path, complexMatch, complexRe) && complexMatch.size() == 5) {
+        return {true, complexMatch[1], complexMatch[2], complexMatch[3], complexMatch[4]};
     }
+
+    // 尝试匹配简单路径格式：cpu.usage_percent
+    static const std::regex simpleRe(R"((\w+)\.(\w+))");
+    std::smatch simpleMatch;
+    if (std::regex_match(path, simpleMatch, simpleRe) && simpleMatch.size() == 3) {
+        return {false, simpleMatch[1], "", "", simpleMatch[2]};
+    }
+
     return {false};
 }
 }
@@ -76,6 +85,12 @@ public:
                 }
             }
             return 0.0; // 未找到匹配项
+        } else if (!path.arrayKey.empty()) {
+            // 处理简单路径格式：cpu.usage_percent
+            if (metrics.contains(path.arrayKey) && metrics[path.arrayKey].contains(path.targetKey)) {
+                return metrics[path.arrayKey][path.targetKey].get<double>();
+            }
+            return 0.0;
         }
 
         // 2. 如果不是自定义路径，回退到JSON Pointer

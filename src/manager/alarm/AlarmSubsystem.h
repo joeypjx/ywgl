@@ -3,7 +3,6 @@
 
 #include <memory>
 #include <atomic>
-#include <thread>
 #include <string>
 #include <nlohmann/json.hpp>
 
@@ -37,8 +36,6 @@ public:
     nlohmann::json getAllAlarmEventsAsJson(int limit = 100);
 
 private:
-    void runDataSimulator();
-
     std::shared_ptr<DatabaseManager> dbManager_;
     std::shared_ptr<MetricCache> cache_;
     std::shared_ptr<AlarmManager> manager_;
@@ -47,9 +44,6 @@ private:
     std::shared_ptr<TemplateRepository> templateRepo_;
 
     std::atomic<bool> stop_signal_{false};
-    std::thread simulator_thread_;
-    std::atomic<bool> running_{false};
-    std::unique_ptr<std::thread> alarm_thread_;
 };
 
 #endif // ALARM_SUBSYSTEM_H 
