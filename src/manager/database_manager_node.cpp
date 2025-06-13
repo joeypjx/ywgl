@@ -5,6 +5,7 @@
 #include <string>
 #include <nlohmann/json.hpp>
 #include <thread>
+#include <map>
 
 // 只保留 node 表和所有 metrics 表的创建
 bool DatabaseManager::initializeNodeTables() {
@@ -50,7 +51,12 @@ bool DatabaseManager::initializeNodeTables() {
                 load_avg_1m REAL NOT NULL,
                 load_avg_5m REAL NOT NULL,
                 load_avg_15m REAL NOT NULL,
-                core_count INTEGER NOT NULL
+                core_count INTEGER NOT NULL,
+                core_allocated INTEGER NOT NULL,
+                temperature REAL NOT NULL,
+                voltage REAL NOT NULL,
+                current REAL NOT NULL,
+                power REAL NOT NULL
             );
         )");
 
@@ -165,12 +171,16 @@ bool DatabaseManager::initializeNodeTables() {
             CREATE TABLE IF NOT EXISTS node_docker_containers (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 slot_docker_metric_id INTEGER NOT NULL,
+                business_id TEXT NOT NULL,
+                uuid TEXT NOT NULL,
                 container_id TEXT NOT NULL,
                 name TEXT NOT NULL,
-                image TEXT NOT NULL,
                 status TEXT NOT NULL,
-                cpu_percent REAL NOT NULL,
-                memory_usage BIGINT NOT NULL,
+                cpu_load REAL NOT NULL,
+                memory_used BIGINT NOT NULL,
+                memory_limit BIGINT NOT NULL,
+                network_tx BIGINT NOT NULL,
+                network_rx BIGINT NOT NULL,
                 FOREIGN KEY (slot_docker_metric_id) REFERENCES node_docker_metrics(id)
             );
         )");
@@ -540,6 +550,94 @@ nlohmann::json DatabaseManager::getAllNodes() {
     }
 }
 
+// 获取层次结构的node列表
+nlohmann::json DatabaseManager::getNodesHierarchical() {
+    if (!db_) {
+        std::cerr << "Database connection not initialized in getNodesHierarchical." << std::endl;
+        return nlohmann::json::array();
+    }
+
+    try {
+        // 使用maps来构建层次结构，以避免复杂的指针逻辑并保持顺序
+        std::map<int, nlohmann::json> boxes_map;
+        std::map<int, std::map<int, nlohmann::json>> slots_map;
+
+        SQLite::Statement query(*db_, R"(
+            SELECT id, box_id, slot_id, cpu_id, srio_id, host_ip, hostname, service_port,
+                   box_type, board_type, cpu_type, os_type, resource_type, cpu_arch,
+                   gpu, status, created_at, updated_at
+            FROM node
+            ORDER BY box_id, slot_id, cpu_id
+        )");
+
+        while (query.executeStep()) {
+            int box_id = query.getColumn(1).getInt();
+            int slot_id = query.getColumn(2).getInt();
+            
+            // Box info
+            if (boxes_map.find(box_id) == boxes_map.end()) {
+                nlohmann::json new_box;
+                new_box["box_id"] = box_id;
+                new_box["box_type"] = query.getColumn(8).getString();
+                boxes_map[box_id] = new_box;
+            }
+
+            // Slot info
+            if (slots_map[box_id].find(slot_id) == slots_map[box_id].end()) {
+                 nlohmann::json new_slot;
+                new_slot["slot_id"] = slot_id;
+                new_slot["board_type"] = query.getColumn(9).getString();
+                new_slot["cpus"] = nlohmann::json::array();
+                slots_map[box_id][slot_id] = new_slot;
+            }
+
+            // CPU info
+            nlohmann::json cpu_node;
+            cpu_node["id"] = query.getColumn(0).getInt();
+            cpu_node["cpu_id"] = query.getColumn(3).getInt();
+            cpu_node["srio_id"] = query.getColumn(4).getInt();
+            cpu_node["host_ip"] = query.getColumn(5).getString();
+            cpu_node["hostname"] = query.getColumn(6).getString();
+            cpu_node["service_port"] = query.getColumn(7).getInt();
+            cpu_node["cpu_type"] = query.getColumn(10).getString();
+            cpu_node["os_type"] = query.getColumn(11).getString();
+            cpu_node["resource_type"] = query.getColumn(12).getString();
+            cpu_node["cpu_arch"] = query.getColumn(13).getString();
+            
+            std::string gpu_json = query.getColumn(14).getString();
+            try {
+                cpu_node["gpu"] = nlohmann::json::parse(gpu_json);
+            } catch (const std::exception& e) {
+                std::cerr << "Error parsing GPU JSON: " << e.what() << std::endl;
+                cpu_node["gpu"] = nlohmann::json::array();
+            }
+
+            cpu_node["status"] = query.getColumn(15).getString();
+            cpu_node["created_at"] = query.getColumn(16).getInt64();
+            cpu_node["updated_at"] = query.getColumn(17).getInt64();
+            
+            slots_map[box_id][slot_id]["cpus"].push_back(cpu_node);
+        }
+
+        // 将map结构转换为最终的JSON数组结构
+        nlohmann::json result = nlohmann::json::array();
+        for (auto& [box_id, box_data] : boxes_map) {
+            nlohmann::json slots_array = nlohmann::json::array();
+            for (auto& [slot_id, slot_data] : slots_map[box_id]) {
+                slots_array.push_back(slot_data);
+            }
+            box_data["slots"] = slots_array;
+            result.push_back(box_data);
+        }
+
+        return result;
+
+    } catch (const std::exception& e) {
+        std::cerr << "Error getting nodes hierarchically: " << e.what() << std::endl;
+        return nlohmann::json::array();
+    }
+}
+
 // 获取所有node信息及其最新的metrics
 nlohmann::json DatabaseManager::getNodesWithLatestMetrics() {
     if (!db_) {
@@ -590,7 +688,8 @@ nlohmann::json DatabaseManager::getNodesWithLatestMetrics() {
             std::string host_ip = node["host_ip"];
             // 获取最新的CPU metrics
             SQLite::Statement cpu_query(*db_, R"(
-                SELECT timestamp, usage_percent, load_avg_1m, load_avg_5m, load_avg_15m, core_count 
+                SELECT timestamp, usage_percent, load_avg_1m, load_avg_5m, load_avg_15m, core_count,
+                       core_allocated, temperature, voltage, current, power
                 FROM node_cpu_metrics 
                 WHERE host_ip = ? 
                 ORDER BY timestamp DESC LIMIT 1
@@ -605,6 +704,11 @@ nlohmann::json DatabaseManager::getNodesWithLatestMetrics() {
                 cpu_metrics["load_avg_5m"] = cpu_query.getColumn(3).getDouble();
                 cpu_metrics["load_avg_15m"] = cpu_query.getColumn(4).getDouble();
                 cpu_metrics["core_count"] = cpu_query.getColumn(5).getInt();
+                cpu_metrics["core_allocated"] = cpu_query.getColumn(6).getInt();
+                cpu_metrics["temperature"] = cpu_query.getColumn(7).getDouble();
+                cpu_metrics["voltage"] = cpu_query.getColumn(8).getDouble();
+                cpu_metrics["current"] = cpu_query.getColumn(9).getDouble();
+                cpu_metrics["power"] = cpu_query.getColumn(10).getDouble();
                 node["latest_cpu_metrics"] = cpu_metrics;
             } else {
                 node["latest_cpu_metrics"] = nlohmann::json::object();
@@ -732,24 +836,28 @@ nlohmann::json DatabaseManager::getNodesWithLatestMetrics() {
                 
                 // 获取容器详细信息
                 SQLite::Statement container_query(*db_, R"(
-                    SELECT container_id, name, image, status, cpu_percent, memory_usage 
+                    SELECT business_id, uuid, container_id, name, status, cpu_load, memory_used, memory_limit, network_tx, network_rx
                     FROM node_docker_containers 
                     WHERE slot_docker_metric_id = ?
                 )");
                 container_query.bind(1, static_cast<int64_t>(slot_docker_metric_id));
                 
-                nlohmann::json containers = nlohmann::json::array();
+                nlohmann::json components = nlohmann::json::array();
                 while (container_query.executeStep()) {
-                    nlohmann::json container;
-                    container["id"] = container_query.getColumn(0).getString();
-                    container["name"] = container_query.getColumn(1).getString();
-                    container["image"] = container_query.getColumn(2).getString();
-                    container["status"] = container_query.getColumn(3).getString();
-                    container["cpu_percent"] = container_query.getColumn(4).getDouble();
-                    container["memory_usage"] = container_query.getColumn(5).getInt64();
-                    containers.push_back(container);
+                    nlohmann::json component;
+                    component["business_id"] = container_query.getColumn(0).getString();
+                    component["uuid"] = container_query.getColumn(1).getString();
+                    component["config"]["id"] = container_query.getColumn(2).getString();
+                    component["config"]["name"] = container_query.getColumn(3).getString();
+                    component["state"] = container_query.getColumn(4).getString();
+                    component["resource"]["cpu"]["load"] = container_query.getColumn(5).getDouble();
+                    component["resource"]["memory"]["mem_used"] = container_query.getColumn(6).getInt64();
+                    component["resource"]["memory"]["mem_limit"] = container_query.getColumn(7).getInt64();
+                    component["resource"]["network"]["tx"] = container_query.getColumn(8).getInt64();
+                    component["resource"]["network"]["rx"] = container_query.getColumn(9).getInt64();
+                    components.push_back(component);
                 }
-                docker_metrics["containers"] = containers;
+                docker_metrics["component"] = components;
                 node["latest_docker_metrics"] = docker_metrics;
             } else {
                 node["latest_docker_metrics"] = nlohmann::json::object();
@@ -818,14 +926,17 @@ bool DatabaseManager::saveNodeCpuMetrics(const std::string& host_ip,
         // 检查必要字段
         if (!cpu_data.contains("usage_percent") || !cpu_data.contains("load_avg_1m") ||
             !cpu_data.contains("load_avg_5m") || !cpu_data.contains("load_avg_15m") ||
-            !cpu_data.contains("core_count")) {
+            !cpu_data.contains("core_count") || !cpu_data.contains("core_allocated") ||
+            !cpu_data.contains("temperature") || !cpu_data.contains("voltage") ||
+            !cpu_data.contains("current") || !cpu_data.contains("power")) {
             return false;
         }
 
         // 插入CPU指标
         SQLite::Statement insert(*db_,
-            "INSERT INTO node_cpu_metrics (host_ip, timestamp, usage_percent, load_avg_1m, load_avg_5m, load_avg_15m, core_count) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?)");
+            "INSERT INTO node_cpu_metrics (host_ip, timestamp, usage_percent, load_avg_1m, load_avg_5m, load_avg_15m, core_count, "
+            "core_allocated, temperature, voltage, current, power) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
         insert.bind(1, host_ip);
         insert.bind(2, static_cast<int64_t>(timestamp));
         insert.bind(3, cpu_data["usage_percent"].get<double>());
@@ -833,6 +944,11 @@ bool DatabaseManager::saveNodeCpuMetrics(const std::string& host_ip,
         insert.bind(5, cpu_data["load_avg_5m"].get<double>());
         insert.bind(6, cpu_data["load_avg_15m"].get<double>());
         insert.bind(7, cpu_data["core_count"].get<int>());
+        insert.bind(8, cpu_data["core_allocated"].get<int>());
+        insert.bind(9, cpu_data["temperature"].get<double>());
+        insert.bind(10, cpu_data["voltage"].get<double>());
+        insert.bind(11, cpu_data["current"].get<double>());
+        insert.bind(12, cpu_data["power"].get<double>());
         insert.exec();
 
         return true;
@@ -1029,47 +1145,75 @@ bool DatabaseManager::saveNodeDockerMetrics(const std::string& host_ip,
                                             long long timestamp, const nlohmann::json& docker_data) {
     try {
         // 检查必要字段
-        if (!docker_data.contains("container_count") || !docker_data.contains("running_count") ||
-            !docker_data.contains("paused_count") || !docker_data.contains("stopped_count") ||
-            !docker_data.contains("containers")) {
+        if (!docker_data.is_array()) {
             return false;
         }
 
+        const auto& components = docker_data;
+        int container_count = components.size();
+        int running_count = 0;
+        int paused_count = 0;
+        int stopped_count = 0;
+
+        for (const auto& component : components) {
+            if (component.contains("state")) {
+                std::string status = component["state"].get<std::string>();
+                if (status == "RUNNING") {
+                    running_count++;
+                } else if (status == "STOPPED") {
+                    stopped_count++;
+                } else if (status == "SLEEPING") {
+                    paused_count++;
+                }
+            }
+        }
+
         // 插入Docker指标
-        SQLite::Statement insert(*db_,
+        SQLite::Statement insert_metrics(*db_,
             "INSERT INTO node_docker_metrics (host_ip, timestamp, container_count, running_count, paused_count, stopped_count) "
             "VALUES (?, ?, ?, ?, ?, ?)");
-        insert.bind(1, host_ip);
-        insert.bind(2, static_cast<int64_t>(timestamp));
-        insert.bind(3, docker_data["container_count"].get<int>());
-        insert.bind(4, docker_data["running_count"].get<int>());
-        insert.bind(5, docker_data["paused_count"].get<int>());
-        insert.bind(6, docker_data["stopped_count"].get<int>());
-        insert.exec();
+        insert_metrics.bind(1, host_ip);
+        insert_metrics.bind(2, static_cast<int64_t>(timestamp));
+        insert_metrics.bind(3, container_count);
+        insert_metrics.bind(4, running_count);
+        insert_metrics.bind(5, paused_count);
+        insert_metrics.bind(6, stopped_count);
+        insert_metrics.exec();
 
         // 获取插入的Docker指标ID
         long long slot_docker_metric_id = db_->getLastInsertRowid();
 
         // 遍历所有容器
-        for (const auto& container : docker_data["containers"]) {
+        for (const auto& container : components) {
             // 检查必要字段
-            if (!container.contains("id") || !container.contains("name") ||
-                !container.contains("image") || !container.contains("status") ||
-                !container.contains("cpu_percent") || !container.contains("memory_usage")) {
+            if (!container.contains("business_id") || !container.contains("uuid") ||
+                !container.contains("config") || !container["config"].contains("id") || !container["config"].contains("name") ||
+                !container.contains("state") || !container.contains("resource")) {
+                continue;
+            }
+            const auto& resource = container["resource"];
+            if (!resource.contains("cpu") || !resource["cpu"].contains("load") ||
+                !resource.contains("memory") || !resource["memory"].contains("mem_used") || !resource["memory"].contains("mem_limit") ||
+                !resource.contains("network") || !resource["network"].contains("tx") || !resource["network"].contains("rx")) {
                 continue;
             }
 
+
             // 插入容器信息
             SQLite::Statement insert_container(*db_,
-                "INSERT INTO node_docker_containers (slot_docker_metric_id, container_id, name, image, status, cpu_percent, memory_usage) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?)");
+                "INSERT INTO node_docker_containers (slot_docker_metric_id, business_id, uuid, container_id, name, status, cpu_load, memory_used, memory_limit, network_tx, network_rx) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
             insert_container.bind(1, static_cast<int64_t>(slot_docker_metric_id));
-            insert_container.bind(2, container["id"].get<std::string>());
-            insert_container.bind(3, container["name"].get<std::string>());
-            insert_container.bind(4, container["image"].get<std::string>());
-            insert_container.bind(5, container["status"].get<std::string>());
-            insert_container.bind(6, container["cpu_percent"].get<double>());
-            insert_container.bind(7, static_cast<int64_t>(container["memory_usage"].get<unsigned long long>()));
+            insert_container.bind(2, container["business_id"].get<std::string>());
+            insert_container.bind(3, container["uuid"].get<std::string>());
+            insert_container.bind(4, container["config"]["id"].get<std::string>());
+            insert_container.bind(5, container["config"]["name"].get<std::string>());
+            insert_container.bind(6, container["state"].get<std::string>());
+            insert_container.bind(7, resource["cpu"]["load"].get<double>());
+            insert_container.bind(8, static_cast<int64_t>(resource["memory"]["mem_used"].get<unsigned long long>()));
+            insert_container.bind(9, static_cast<int64_t>(resource["memory"]["mem_limit"].get<unsigned long long>()));
+            insert_container.bind(10, static_cast<int64_t>(resource["network"]["tx"].get<unsigned long long>()));
+            insert_container.bind(11, static_cast<int64_t>(resource["network"]["rx"].get<unsigned long long>()));
             insert_container.exec();
         }
 
@@ -1087,7 +1231,8 @@ nlohmann::json DatabaseManager::getNodeCpuMetrics(const std::string& host_ip, in
 
         // 查询CPU指标
         SQLite::Statement query(*db_,
-            "SELECT timestamp, usage_percent, load_avg_1m, load_avg_5m, load_avg_15m, core_count "
+            "SELECT timestamp, usage_percent, load_avg_1m, load_avg_5m, load_avg_15m, core_count, "
+            "core_allocated, temperature, voltage, current, power "
             "FROM node_cpu_metrics WHERE host_ip = ? ORDER BY timestamp DESC LIMIT ?");
         query.bind(1, host_ip);
         query.bind(2, limit);
@@ -1100,6 +1245,11 @@ nlohmann::json DatabaseManager::getNodeCpuMetrics(const std::string& host_ip, in
             metric["load_avg_5m"] = query.getColumn(3).getDouble();
             metric["load_avg_15m"] = query.getColumn(4).getDouble();
             metric["core_count"] = query.getColumn(5).getInt();
+            metric["core_allocated"] = query.getColumn(6).getInt();
+            metric["temperature"] = query.getColumn(7).getDouble();
+            metric["voltage"] = query.getColumn(8).getDouble();
+            metric["current"] = query.getColumn(9).getDouble();
+            metric["power"] = query.getColumn(10).getDouble();
 
             result.push_back(metric);
         }
@@ -1303,25 +1453,28 @@ nlohmann::json DatabaseManager::getNodeDockerMetrics(const std::string& host_ip,
 
             // 查询容器信息
             SQLite::Statement container_query(*db_,
-                "SELECT container_id, name, image, status, cpu_percent, memory_usage "
+                "SELECT business_id, uuid, container_id, name, status, cpu_load, memory_used, memory_limit, network_tx, network_rx "
                 "FROM node_docker_containers WHERE slot_docker_metric_id = ?");
             container_query.bind(1, static_cast<int64_t>(slot_docker_metric_id));
 
-            nlohmann::json containers = nlohmann::json::array();
+            nlohmann::json components = nlohmann::json::array();
 
             while (container_query.executeStep()) {
-                nlohmann::json container;
-                container["id"] = container_query.getColumn(0).getString();
-                container["name"] = container_query.getColumn(1).getString();
-                container["image"] = container_query.getColumn(2).getString();
-                container["status"] = container_query.getColumn(3).getString();
-                container["cpu_percent"] = container_query.getColumn(4).getDouble();
-                container["memory_usage"] = container_query.getColumn(5).getInt64();
-
-                containers.push_back(container);
+                nlohmann::json component;
+                component["business_id"] = container_query.getColumn(0).getString();
+                component["uuid"] = container_query.getColumn(1).getString();
+                component["config"]["id"] = container_query.getColumn(2).getString();
+                component["config"]["name"] = container_query.getColumn(3).getString();
+                component["state"] = container_query.getColumn(4).getString();
+                component["resource"]["cpu"]["load"] = container_query.getColumn(5).getDouble();
+                component["resource"]["memory"]["mem_used"] = container_query.getColumn(6).getInt64();
+                component["resource"]["memory"]["mem_limit"] = container_query.getColumn(7).getInt64();
+                component["resource"]["network"]["tx"] = container_query.getColumn(8).getInt64();
+                component["resource"]["network"]["rx"] = container_query.getColumn(9).getInt64();
+                components.push_back(component);
             }
 
-            metric["containers"] = containers;
+            metric["component"] = components;
             result.push_back(metric);
         }
 
@@ -1343,6 +1496,7 @@ bool DatabaseManager::saveNodeResourceUsage(const nlohmann::json& resource_usage
     std::string host_ip = resource_usage["host_ip"];
     long long timestamp = resource_usage["timestamp"];
     const auto& resource = resource_usage["resource"];
+    const auto& component = resource_usage["component"];
     
     // 保存各类资源数据
     if (resource.contains("cpu")) {
@@ -1357,11 +1511,11 @@ bool DatabaseManager::saveNodeResourceUsage(const nlohmann::json& resource_usage
     if (resource.contains("network")) {
         saveNodeNetworkMetrics(host_ip, timestamp, resource["network"]);
     }
-    if (resource.contains("docker")) {
-        saveNodeDockerMetrics(host_ip, timestamp, resource["docker"]);
-    }
     if (resource.contains("gpu")) {
         saveNodeGpuMetrics(host_ip, timestamp, resource["gpu"]);
+    }
+    if (component.is_array()) {
+        saveNodeDockerMetrics(host_ip, timestamp, component);
     }
     return true;
 }

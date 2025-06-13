@@ -40,6 +40,7 @@ public:
     nlohmann::json getNode(int box_id, int slot_id, int cpu_id);
     nlohmann::json getNodeByhost_ip(const std::string& host_ip);
     nlohmann::json getAllNodes();
+    nlohmann::json getNodesHierarchical();
     nlohmann::json getNodesWithLatestMetrics();
 
     // Node Metrics Methods

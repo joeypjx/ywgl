@@ -30,6 +30,10 @@ void HTTPServer::initNodeRoutes()
     // GET /node/metrics - 获取节点指标
     server_.Get("/node/metrics", [this](const httplib::Request &req, httplib::Response &res)
                 { handleGetNodeMetrics(req, res); });
+
+    // GET /node/hierarchical - 获取层级结构的节点信息
+    server_.Get("/node/hierarchical", [this](const httplib::Request &req, httplib::Response &res)
+                { handleGetNodesHierarchical(req, res); });
 }
 
 // 处理节点心跳请求
@@ -115,10 +119,11 @@ void HTTPServer::handleResourceUpdate(const httplib::Request &req, httplib::Resp
             {"host_ip", data["host_ip"]},
             {"timestamp", std::chrono::duration_cast<std::chrono::milliseconds>(
                 std::chrono::system_clock::now().time_since_epoch()).count()},
-            {"resource", data["resource"]}
+            {"resource", data["resource"]},
+            {"component", data["component"]}
         };
         
-        alarm_subsystem_->updateNodeMetrics(data["host_ip"], metrics_data["resource"]);
+        alarm_subsystem_->updateNodeMetrics(data["host_ip"], metrics_data);
 
         if (db_manager_->saveNodeResourceUsage(metrics_data))
         {
@@ -164,6 +169,24 @@ void HTTPServer::handleGetNodeMetrics(const httplib::Request &req, httplib::Resp
         }
         auto metrics = db_manager_->getNodesWithLatestMetrics();
         sendSuccessResponse(res, "nodes_metrics", metrics);
+    }
+    catch (const std::exception &e)
+    {
+        sendExceptionResponse(res, e);
+    }
+}
+
+// 处理获取层级结构的节点信息
+void HTTPServer::handleGetNodesHierarchical(const httplib::Request &req, httplib::Response &res)
+{
+    try
+    {
+        if (!db_manager_) {
+            sendErrorResponse(res, "Database manager not initialized");
+            return;
+        }
+        auto nodes = db_manager_->getNodesHierarchical();
+        sendSuccessResponse(res, "nodes_hierarchical", nodes);
     }
     catch (const std::exception &e)
     {
