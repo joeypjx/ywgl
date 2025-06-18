@@ -43,7 +43,7 @@ void AlarmSubsystem::initialize() {
     // 创建示例告警模板
     json high_cpu_tpl = {
         {"templateId", "CPU使用率-严重"},
-        {"metricName", "cpu.usage_percent"},
+        {"metricName", "resource.cpu.usage_percent"},
         {"alarmType", "system"},
         {"alarmLevel", "critical"},
         {"triggerCountThreshold", 3},
@@ -53,7 +53,7 @@ void AlarmSubsystem::initialize() {
     };
     json high_disk_tpl = {
         {"templateId", "磁盘使用率-警告"},
-        {"metricName", "disk[mount_point=/].usage_percent"},
+        {"metricName", "resource.disk[mount_point=/].usage_percent"},
         {"alarmType", "system"},
         {"alarmLevel", "warning"},
         {"triggerCountThreshold", 2},
