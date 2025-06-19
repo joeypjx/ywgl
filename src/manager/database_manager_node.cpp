@@ -15,9 +15,14 @@ bool DatabaseManager::initializeNodeTables() {
         return false;
     }
     try {
-
-        if (std::filesystem::exists(db_path_)) {
-            return true;
+        // if there is already a table in the database, return true
+        SQLite::Statement query(*db_, "SELECT COUNT(*) FROM sqlite_master");
+        if (query.executeStep()) {
+            int count = query.getColumn(0).getInt();
+            if (count > 0) {
+                std::cout << "There is already a table in the database." << std::endl;
+                return true;
+            }
         }
 
         db_->exec("PRAGMA foreign_keys = ON;");
