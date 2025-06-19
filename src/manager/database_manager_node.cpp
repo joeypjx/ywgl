@@ -1,4 +1,5 @@
 #include "database_manager.h"
+#include <filesystem>
 #include <SQLiteCpp/SQLiteCpp.h>
 #include <iostream>
 #include <chrono>
@@ -14,6 +15,11 @@ bool DatabaseManager::initializeNodeTables() {
         return false;
     }
     try {
+
+        if (std::filesystem::exists(db_path_)) {
+            return true;
+        }
+
         db_->exec("PRAGMA foreign_keys = ON;");
 
         // 创建 node 表

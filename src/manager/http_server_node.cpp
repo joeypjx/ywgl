@@ -125,6 +125,12 @@ void HTTPServer::handleResourceUpdate(const httplib::Request &req, httplib::Resp
         
         alarm_subsystem_->updateNodeMetrics(data["host_ip"], metrics_data);
 
+        ModuleDataAccess moduleDataAccess;
+        // data["component"] is array
+        for (const auto& component : data["component"]) {
+            moduleDataAccess.updateComponentState(component["instance_id"], component["index"], component["state"], component["resource"]["cpu"]["load"], component["resource"]["memory"]["mem_used"], component["resource"]["memory"]["mem_limit"], component["resource"]["network"]["tx"], component["resource"]["network"]["rx"]);
+        }
+
         if (db_manager_->saveNodeResourceUsage(metrics_data))
         {
             sendSuccessResponse(res, "Resource data updated successfully");
