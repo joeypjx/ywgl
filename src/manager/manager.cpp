@@ -3,10 +3,14 @@
 #include "database_manager.h"
 #include "multicast_announcer.h"
 #include "alarm/AlarmSubsystem.h"
+#include "ResourceSubsystem.h"
 #include <iostream>
 #include <thread>
 #include <chrono>
 #include <atomic>
+
+// 静态成员变量定义
+std::shared_ptr<ResourceSubsystem> Manager::resource_subsystem_instance_ = nullptr;
 
 Manager::Manager(int port, const std::string& db_path)
     : port_(port), db_path_(db_path), running_(false) {}
@@ -25,6 +29,10 @@ bool Manager::initialize() {
         std::cerr << "[Manager] 数据库管理器初始化失败" << std::endl;
         return false;
     }
+
+    // 初始化ResourceSubsystem
+    resource_subsystem_ = std::make_shared<ResourceSubsystem>(db_manager_);
+    resource_subsystem_instance_ = resource_subsystem_; // 保存到静态变量
 
     alarm_subsystem_ = std::make_shared<AlarmSubsystem>(db_manager_);
     alarm_subsystem_->initialize();
@@ -45,13 +53,13 @@ bool Manager::start() {
     std::cout << "[Manager] 启动..." << std::endl;
 
     if (http_server_) {
-        std::thread server_thread([this]() {
+        // std::thread server_thread([this]() {
             if (!http_server_->start()) {
                 std::cerr << "[Manager] HTTP服务器启动失败" << std::endl;
                 running_ = false;
             }
-        });
-        server_thread.detach();
+        // });
+        // server_thread.detach();
         std::this_thread::sleep_for(std::chrono::milliseconds(100));
     }
 
@@ -89,4 +97,9 @@ void Manager::stop() {
 
     running_ = false;
     std::cout << "[Manager] 已停止" << std::endl;
+}
+
+// 静态方法实现
+std::shared_ptr<ResourceSubsystem> Manager::getResourceSubsystem() {
+    return resource_subsystem_instance_;
 }

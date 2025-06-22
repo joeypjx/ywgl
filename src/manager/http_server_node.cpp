@@ -123,7 +123,7 @@ void HTTPServer::handleResourceUpdate(const httplib::Request &req, httplib::Resp
             {"component", data["component"]}
         };
         
-        alarm_subsystem_->updateNodeMetrics(data["host_ip"], metrics_data);
+        // alarm_subsystem_->updateNodeMetrics(data["host_ip"], metrics_data);
 
         ModuleDataAccess moduleDataAccess;
         // data["component"] is array

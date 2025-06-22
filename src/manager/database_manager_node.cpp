@@ -71,6 +71,21 @@ bool DatabaseManager::initializeNodeTables() {
             );
         )");
 
+        db_->exec(R"(
+            CREATE TRIGGER IF NOT EXISTS
+            robust_purge_node_cpu_metrics
+            AFTER INSERT ON node_cpu_metrics
+            WHEN (SELECT COUNT(*) FROM node_cpu_metrics)
+            > 999
+            BEGIN
+                DELETE FROM node_cpu_metrics WHERE id
+                NOT IN (
+                    SELECT id FROM node_cpu_metrics
+                    ORDER BY id DESC LIMIT 100
+                );
+            END;
+        )");
+
         // 创建node_memory_metrics表
         db_->exec(R"(
             CREATE TABLE IF NOT EXISTS node_memory_metrics (
@@ -84,6 +99,21 @@ bool DatabaseManager::initializeNodeTables() {
             );
         )");
 
+        db_->exec(R"(
+            CREATE TRIGGER IF NOT EXISTS
+            robust_purge_node_memory_metrics
+            AFTER INSERT ON node_memory_metrics
+            WHEN (SELECT COUNT(*) FROM node_memory_metrics)
+            > 999
+            BEGIN
+                DELETE FROM node_memory_metrics WHERE id
+                NOT IN (
+                    SELECT id FROM node_memory_metrics
+                    ORDER BY id DESC LIMIT 100
+                );
+            END;
+        )");
+
         // 创建node_disk_metrics表
         db_->exec(R"(
             CREATE TABLE IF NOT EXISTS node_disk_metrics (
@@ -92,6 +122,21 @@ bool DatabaseManager::initializeNodeTables() {
                 timestamp TIMESTAMP NOT NULL,
                 disk_count INTEGER NOT NULL
             );
+        )");
+
+        db_->exec(R"(
+            CREATE TRIGGER IF NOT EXISTS
+            robust_purge_node_disk_metrics
+            AFTER INSERT ON node_disk_metrics
+            WHEN (SELECT COUNT(*) FROM node_disk_metrics)
+            > 999
+            BEGIN
+                DELETE FROM node_disk_metrics WHERE id
+                NOT IN (
+                    SELECT id FROM node_disk_metrics
+                    ORDER BY id DESC LIMIT 100
+                );
+            END;
         )");
 
         // 创建node_disk_usage表
@@ -109,6 +154,21 @@ bool DatabaseManager::initializeNodeTables() {
             );
         )");
 
+        db_->exec(R"(
+            CREATE TRIGGER IF NOT EXISTS
+            robust_purge_node_disk_usage
+            AFTER INSERT ON node_disk_usage
+            WHEN (SELECT COUNT(*) FROM node_disk_usage)
+            > 999
+            BEGIN
+                DELETE FROM node_disk_usage WHERE id
+                NOT IN (
+                    SELECT id FROM node_disk_usage
+                    ORDER BY id DESC LIMIT 100
+                );
+            END;
+        )");
+
         // 创建node_network_metrics表
         db_->exec(R"(
             CREATE TABLE IF NOT EXISTS node_network_metrics (
@@ -117,6 +177,21 @@ bool DatabaseManager::initializeNodeTables() {
                 timestamp TIMESTAMP NOT NULL,
                 network_count INTEGER NOT NULL
             );
+        )");
+
+        db_->exec(R"(
+            CREATE TRIGGER IF NOT EXISTS
+            robust_purge_node_network_metrics
+            AFTER INSERT ON node_network_metrics
+            WHEN (SELECT COUNT(*) FROM node_network_metrics)
+            > 999
+            BEGIN
+                DELETE FROM node_network_metrics WHERE id
+                NOT IN (
+                    SELECT id FROM node_network_metrics
+                    ORDER BY id DESC LIMIT 100
+                );
+            END;
         )");
 
         // 创建node_network_usage表
@@ -135,6 +210,21 @@ bool DatabaseManager::initializeNodeTables() {
             );
         )");
 
+        db_->exec(R"(
+            CREATE TRIGGER IF NOT EXISTS
+            robust_purge_node_network_usage
+            AFTER INSERT ON node_network_usage
+            WHEN (SELECT COUNT(*) FROM node_network_usage)
+            > 999
+            BEGIN
+                DELETE FROM node_network_usage WHERE id
+                NOT IN (
+                    SELECT id FROM node_network_usage
+                    ORDER BY id DESC LIMIT 100
+                );
+            END;
+        )");
+
         // 创建node_gpu_metrics表
         db_->exec(R"(
             CREATE TABLE IF NOT EXISTS node_gpu_metrics (
@@ -143,6 +233,21 @@ bool DatabaseManager::initializeNodeTables() {
                 timestamp TIMESTAMP NOT NULL,
                 gpu_count INTEGER NOT NULL
             );
+        )");
+
+        db_->exec(R"(
+            CREATE TRIGGER IF NOT EXISTS
+            robust_purge_node_gpu_metrics
+            AFTER INSERT ON node_gpu_metrics
+            WHEN (SELECT COUNT(*) FROM node_gpu_metrics)
+            > 999
+            BEGIN
+                DELETE FROM node_gpu_metrics WHERE id
+                NOT IN (
+                    SELECT id FROM node_gpu_metrics
+                    ORDER BY id DESC LIMIT 100
+                );
+            END;
         )");
 
         // 创建node_gpu_usage表
@@ -164,6 +269,21 @@ bool DatabaseManager::initializeNodeTables() {
             );
         )");
 
+        db_->exec(R"(
+            CREATE TRIGGER IF NOT EXISTS
+            robust_purge_node_gpu_usage
+            AFTER INSERT ON node_gpu_usage
+            WHEN (SELECT COUNT(*) FROM node_gpu_usage)
+            > 999
+            BEGIN
+                DELETE FROM node_gpu_usage WHERE id
+                NOT IN (
+                    SELECT id FROM node_gpu_usage
+                    ORDER BY id DESC LIMIT 100
+                );
+            END;
+        )");
+
         // 创建node_docker_metrics表
         db_->exec(R"(
             CREATE TABLE IF NOT EXISTS node_docker_metrics (
@@ -177,12 +297,28 @@ bool DatabaseManager::initializeNodeTables() {
             );
         )");
 
+        db_->exec(R"(
+            CREATE TRIGGER IF NOT EXISTS
+            robust_purge_node_docker_metrics
+            AFTER INSERT ON node_docker_metrics
+            WHEN (SELECT COUNT(*) FROM node_docker_metrics)
+            > 999
+            BEGIN
+                DELETE FROM node_docker_metrics WHERE id
+                NOT IN (
+                    SELECT id FROM node_docker_metrics
+                    ORDER BY id DESC LIMIT 100
+                );
+            END;
+        )");
+
         // 创建node_docker_containers表
         db_->exec(R"(
             CREATE TABLE IF NOT EXISTS node_docker_containers (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 slot_docker_metric_id INTEGER NOT NULL,
-                business_id TEXT NOT NULL,
+                instance_id TEXT NOT NULL,
+                gpu_index INTEGER NOT NULL,
                 uuid TEXT NOT NULL,
                 container_id TEXT NOT NULL,
                 name TEXT NOT NULL,
@@ -194,6 +330,21 @@ bool DatabaseManager::initializeNodeTables() {
                 network_rx BIGINT NOT NULL,
                 FOREIGN KEY (slot_docker_metric_id) REFERENCES node_docker_metrics(id)
             );
+        )");
+
+        db_->exec(R"(
+            CREATE TRIGGER IF NOT EXISTS
+            robust_purge_node_docker_containers
+            AFTER INSERT ON node_docker_containers
+            WHEN (SELECT COUNT(*) FROM node_docker_containers)
+            > 999
+            BEGIN
+                DELETE FROM node_docker_containers WHERE id
+                NOT IN (
+                    SELECT id FROM node_docker_containers
+                    ORDER BY id DESC LIMIT 100
+                );
+            END;
         )");
 
         // 创建索引以提高查询性能
@@ -847,7 +998,7 @@ nlohmann::json DatabaseManager::getNodesWithLatestMetrics() {
                 
                 // 获取容器详细信息
                 SQLite::Statement container_query(*db_, R"(
-                    SELECT business_id, uuid, container_id, name, status, cpu_load, memory_used, memory_limit, network_tx, network_rx
+                    SELECT instance_id, gpu_index, uuid, container_id, name, status, cpu_load, memory_used, memory_limit, network_tx, network_rx
                     FROM node_docker_containers 
                     WHERE slot_docker_metric_id = ?
                 )");
@@ -856,16 +1007,17 @@ nlohmann::json DatabaseManager::getNodesWithLatestMetrics() {
                 nlohmann::json components = nlohmann::json::array();
                 while (container_query.executeStep()) {
                     nlohmann::json component;
-                    component["business_id"] = container_query.getColumn(0).getString();
-                    component["uuid"] = container_query.getColumn(1).getString();
-                    component["config"]["id"] = container_query.getColumn(2).getString();
-                    component["config"]["name"] = container_query.getColumn(3).getString();
-                    component["state"] = container_query.getColumn(4).getString();
-                    component["resource"]["cpu"]["load"] = container_query.getColumn(5).getDouble();
-                    component["resource"]["memory"]["mem_used"] = container_query.getColumn(6).getInt64();
-                    component["resource"]["memory"]["mem_limit"] = container_query.getColumn(7).getInt64();
-                    component["resource"]["network"]["tx"] = container_query.getColumn(8).getInt64();
-                    component["resource"]["network"]["rx"] = container_query.getColumn(9).getInt64();
+                    component["instance_id"] = container_query.getColumn(0).getString();
+                    component["index"] = container_query.getColumn(1).getString();
+                    component["uuid"] = container_query.getColumn(2).getString();
+                    component["config"]["id"] = container_query.getColumn(3).getString();
+                    component["config"]["name"] = container_query.getColumn(4).getString();
+                    component["state"] = container_query.getColumn(5).getString();
+                    component["resource"]["cpu"]["load"] = container_query.getColumn(6).getDouble();
+                    component["resource"]["memory"]["mem_used"] = container_query.getColumn(7).getInt64();
+                    component["resource"]["memory"]["mem_limit"] = container_query.getColumn(8).getInt64();
+                    component["resource"]["network"]["tx"] = container_query.getColumn(9).getInt64();
+                    component["resource"]["network"]["rx"] = container_query.getColumn(10).getInt64();
                     components.push_back(component);
                 }
                 docker_metrics["component"] = components;
@@ -938,8 +1090,7 @@ bool DatabaseManager::saveNodeCpuMetrics(const std::string& host_ip,
         if (!cpu_data.contains("usage_percent") || !cpu_data.contains("load_avg_1m") ||
             !cpu_data.contains("load_avg_5m") || !cpu_data.contains("load_avg_15m") ||
             !cpu_data.contains("core_count") || !cpu_data.contains("core_allocated") ||
-            !cpu_data.contains("temperature") || !cpu_data.contains("voltage") ||
-            !cpu_data.contains("current") || !cpu_data.contains("power")) {
+            !cpu_data.contains("temperature") || !cpu_data.contains("power")) {
             return false;
         }
 
@@ -957,8 +1108,8 @@ bool DatabaseManager::saveNodeCpuMetrics(const std::string& host_ip,
         insert.bind(7, cpu_data["core_count"].get<int>());
         insert.bind(8, cpu_data["core_allocated"].get<int>());
         insert.bind(9, cpu_data["temperature"].get<double>());
-        insert.bind(10, cpu_data["voltage"].get<double>());
-        insert.bind(11, cpu_data["current"].get<double>());
+        insert.bind(10, 0);
+        insert.bind(11, 0);
         insert.bind(12, cpu_data["power"].get<double>());
         insert.exec();
 
@@ -1197,7 +1348,7 @@ bool DatabaseManager::saveNodeDockerMetrics(const std::string& host_ip,
         // 遍历所有容器
         for (const auto& container : components) {
             // 检查必要字段
-            if (!container.contains("business_id") || !container.contains("uuid") ||
+            if (!container.contains("instance_id") || !container.contains("index") || !container.contains("uuid") ||
                 !container.contains("config") || !container["config"].contains("id") || !container["config"].contains("name") ||
                 !container.contains("state") || !container.contains("resource")) {
                 continue;
@@ -1209,22 +1360,22 @@ bool DatabaseManager::saveNodeDockerMetrics(const std::string& host_ip,
                 continue;
             }
 
-
             // 插入容器信息
             SQLite::Statement insert_container(*db_,
-                "INSERT INTO node_docker_containers (slot_docker_metric_id, business_id, uuid, container_id, name, status, cpu_load, memory_used, memory_limit, network_tx, network_rx) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
+                "INSERT INTO node_docker_containers (slot_docker_metric_id, instance_id, gpu_index, uuid, container_id, name, status, cpu_load, memory_used, memory_limit, network_tx, network_rx) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
             insert_container.bind(1, static_cast<int64_t>(slot_docker_metric_id));
-            insert_container.bind(2, container["business_id"].get<std::string>());
-            insert_container.bind(3, container["uuid"].get<std::string>());
-            insert_container.bind(4, container["config"]["id"].get<std::string>());
-            insert_container.bind(5, container["config"]["name"].get<std::string>());
-            insert_container.bind(6, container["state"].get<std::string>());
-            insert_container.bind(7, resource["cpu"]["load"].get<double>());
-            insert_container.bind(8, static_cast<int64_t>(resource["memory"]["mem_used"].get<unsigned long long>()));
-            insert_container.bind(9, static_cast<int64_t>(resource["memory"]["mem_limit"].get<unsigned long long>()));
-            insert_container.bind(10, static_cast<int64_t>(resource["network"]["tx"].get<unsigned long long>()));
-            insert_container.bind(11, static_cast<int64_t>(resource["network"]["rx"].get<unsigned long long>()));
+            insert_container.bind(2, container["instance_id"].get<std::string>());
+            insert_container.bind(3, container["index"].get<int>());
+            insert_container.bind(4, container["uuid"].get<std::string>());
+            insert_container.bind(5, container["config"]["id"].get<std::string>());
+            insert_container.bind(6, container["config"]["name"].get<std::string>());
+            insert_container.bind(7, container["state"].get<std::string>());
+            insert_container.bind(8, resource["cpu"]["load"].get<double>());
+            insert_container.bind(9, static_cast<int64_t>(resource["memory"]["mem_used"].get<unsigned long long>()));
+            insert_container.bind(10, static_cast<int64_t>(resource["memory"]["mem_limit"].get<unsigned long long>()));
+            insert_container.bind(11, static_cast<int64_t>(resource["network"]["tx"].get<unsigned long long>()));
+            insert_container.bind(12, static_cast<int64_t>(resource["network"]["rx"].get<unsigned long long>()));
             insert_container.exec();
         }
 
@@ -1464,7 +1615,7 @@ nlohmann::json DatabaseManager::getNodeDockerMetrics(const std::string& host_ip,
 
             // 查询容器信息
             SQLite::Statement container_query(*db_,
-                "SELECT business_id, uuid, container_id, name, status, cpu_load, memory_used, memory_limit, network_tx, network_rx "
+                "SELECT instance_id, gpu_index, uuid, container_id, name, status, cpu_load, memory_used, memory_limit, network_tx, network_rx "
                 "FROM node_docker_containers WHERE slot_docker_metric_id = ?");
             container_query.bind(1, static_cast<int64_t>(slot_docker_metric_id));
 
@@ -1472,16 +1623,17 @@ nlohmann::json DatabaseManager::getNodeDockerMetrics(const std::string& host_ip,
 
             while (container_query.executeStep()) {
                 nlohmann::json component;
-                component["business_id"] = container_query.getColumn(0).getString();
-                component["uuid"] = container_query.getColumn(1).getString();
-                component["config"]["id"] = container_query.getColumn(2).getString();
-                component["config"]["name"] = container_query.getColumn(3).getString();
-                component["state"] = container_query.getColumn(4).getString();
-                component["resource"]["cpu"]["load"] = container_query.getColumn(5).getDouble();
-                component["resource"]["memory"]["mem_used"] = container_query.getColumn(6).getInt64();
-                component["resource"]["memory"]["mem_limit"] = container_query.getColumn(7).getInt64();
-                component["resource"]["network"]["tx"] = container_query.getColumn(8).getInt64();
-                component["resource"]["network"]["rx"] = container_query.getColumn(9).getInt64();
+                component["instance_id"] = container_query.getColumn(0).getString();
+                component["index"] = container_query.getColumn(1).getInt();
+                component["uuid"] = container_query.getColumn(2).getString();
+                component["container_id"] = container_query.getColumn(3).getString();
+                component["name"] = container_query.getColumn(4).getString();
+                component["state"] = container_query.getColumn(5).getString();
+                component["resource"]["cpu"]["load"] = container_query.getColumn(6).getDouble();
+                component["resource"]["memory"]["mem_used"] = container_query.getColumn(7).getInt64();
+                component["resource"]["memory"]["mem_limit"] = container_query.getColumn(8).getInt64();
+                component["resource"]["network"]["tx"] = container_query.getColumn(9).getInt64();
+                component["resource"]["network"]["rx"] = container_query.getColumn(10).getInt64();
                 components.push_back(component);
             }
 
