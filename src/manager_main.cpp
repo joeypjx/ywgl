@@ -42,8 +42,8 @@ int main(int argc, char* argv[]) {
     }
     
     // 注册信号处理
-    signal(SIGINT, signalHandler);
-    signal(SIGTERM, signalHandler);
+    // signal(SIGINT, signalHandler);
+    // signal(SIGTERM, signalHandler);
     
     // 创建Manager实例
     g_manager = std::make_unique<Manager>(port, db_path);
