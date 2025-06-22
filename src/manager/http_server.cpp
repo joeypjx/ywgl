@@ -4,10 +4,10 @@
 #include <utility>
 #include <thread>
 
-HTTPServer::HTTPServer(std::shared_ptr<DatabaseManager> db_manager,
+HTTPServer::HTTPServer(std::shared_ptr<TDengineManager> tdengine_manager,
                        std::shared_ptr<AlarmSubsystem> alarm_subsystem,
                        int port)
-    : db_manager_(std::move(db_manager)),
+    : tdengine_manager_(std::move(tdengine_manager)),
       alarm_subsystem_(std::move(alarm_subsystem)),
       port_(port),
       running_(false)

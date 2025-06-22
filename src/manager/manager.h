@@ -3,6 +3,8 @@
 #include <string>
 #include <memory>
 #include <atomic>
+#include "tdengine_manager.h"
+
 
 // 前向声明
 class HTTPServer;
@@ -40,7 +42,7 @@ private:
     std::unique_ptr<MulticastAnnouncer> multicast_announcer_;    // 组播公告器
     std::shared_ptr<AlarmSubsystem> alarm_subsystem_;            // 告警子系统
     std::shared_ptr<ResourceSubsystem> resource_subsystem_;      // 资源子系统
-
+    std::shared_ptr<TDengineManager> tdengine_manager_;          // TDengine管理器
     // 静态成员变量：保存ResourceSubsystem实例
     static std::shared_ptr<ResourceSubsystem> resource_subsystem_instance_;
 };

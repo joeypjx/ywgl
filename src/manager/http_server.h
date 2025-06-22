@@ -8,9 +8,9 @@
 #include <httplib.h>
 #include <nlohmann/json.hpp>
 #include "alarm/AlarmSubsystem.h"
-
+#include "tdengine_manager.h"
 // 前向声明
-class DatabaseManager;
+// class DatabaseManager;
 
 /**
  * HTTPServer类 - HTTP服务器
@@ -20,7 +20,7 @@ class DatabaseManager;
 class HTTPServer {
 public:
     // 构造与析构
-    HTTPServer(std::shared_ptr<DatabaseManager> db_manager, 
+    HTTPServer(std::shared_ptr<TDengineManager> tdengine_manager, 
                std::shared_ptr<AlarmSubsystem> alarm_subsystem,
               int port = 8080);
     ~HTTPServer();
@@ -52,7 +52,7 @@ public:
 
 protected:
     httplib::Server server_;  // HTTP服务器
-    std::shared_ptr<DatabaseManager> db_manager_;    // 数据库管理器
+    std::shared_ptr<TDengineManager> tdengine_manager_;    // 数据库管理器
 
 private:
     int port_;  // 监听端口

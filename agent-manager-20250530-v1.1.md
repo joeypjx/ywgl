@@ -113,8 +113,9 @@ POST /resource
         },
         "component": [
             {
-                "business_id": "string, 容器所属的业务示例id",
+                "instance_id": "string, 容器所属的业务示例id",
                 "uuid": "string，容器所属的组件实例uuid",
+                "index": "int",
                 "config": {
                     "name": "string，容器name",
                     "id": "string，容器ID", // docker id

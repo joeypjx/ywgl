@@ -62,13 +62,13 @@ void HTTPServer::handleHeartbeat(const httplib::Request &req, httplib::Response 
             return;
         }
         
-        if (!db_manager_) {
-            sendErrorResponse(res, "Database manager not initialized");
+        if (!tdengine_manager_) {
+            sendErrorResponse(res, "TDengine manager not initialized");
             return;
         }
         
         // 调用updateNode保存节点信息
-        if (db_manager_->updateNode(data))
+        if (tdengine_manager_->updateNodeInfo(data))
         {
             sendSuccessResponse(res, "Node information updated successfully");
         }
@@ -109,8 +109,8 @@ void HTTPServer::handleResourceUpdate(const httplib::Request &req, httplib::Resp
             return;
         }
         
-        if (!db_manager_) {
-            sendErrorResponse(res, "Database manager not initialized");
+        if (!tdengine_manager_) {
+            sendErrorResponse(res, "TDengine manager not initialized");
             return;
         }
         
@@ -131,7 +131,7 @@ void HTTPServer::handleResourceUpdate(const httplib::Request &req, httplib::Resp
         //     moduleDataAccess.updateComponentState(component["instance_id"], component["index"], component["state"], component["resource"]["cpu"]["load"], component["resource"]["memory"]["mem_used"], component["resource"]["memory"]["mem_limit"], component["resource"]["network"]["tx"], component["resource"]["network"]["rx"]);
         // }
 
-        if (db_manager_->saveNodeResourceUsage(metrics_data))
+        if (tdengine_manager_->saveMetrics(metrics_data))
         {
             sendSuccessResponse(res, "Resource data updated successfully");
         }
@@ -151,11 +151,11 @@ void HTTPServer::handleGetAllNodes(const httplib::Request &req, httplib::Respons
 {
     try
     {
-        if (!db_manager_) {
-            sendErrorResponse(res, "Database manager not initialized");
+        if (!tdengine_manager_) {
+            sendErrorResponse(res, "TDengine manager not initialized");
             return;
         }
-        auto nodes = db_manager_->getAllNodes();
+        auto nodes = tdengine_manager_->getAllNodesInfo();
         sendSuccessResponse(res, "nodes", nodes);
     }
     catch (const std::exception &e)
@@ -169,11 +169,11 @@ void HTTPServer::handleGetNodeMetrics(const httplib::Request &req, httplib::Resp
 {
     try
     {
-        if (!db_manager_) {
-            sendErrorResponse(res, "Database manager not initialized");
+        if (!tdengine_manager_) {
+            sendErrorResponse(res, "TDengine manager not initialized");
             return;
         }
-        auto metrics = db_manager_->getNodesWithLatestMetrics();
+        auto metrics = tdengine_manager_->getNodesWithLatestMetrics();
         sendSuccessResponse(res, "nodes_metrics", metrics);
     }
     catch (const std::exception &e)
@@ -185,17 +185,17 @@ void HTTPServer::handleGetNodeMetrics(const httplib::Request &req, httplib::Resp
 // 处理获取层级结构的节点信息
 void HTTPServer::handleGetNodesHierarchical(const httplib::Request &req, httplib::Response &res)
 {
-    try
-    {
-        if (!db_manager_) {
-            sendErrorResponse(res, "Database manager not initialized");
-            return;
-        }
-        auto nodes = db_manager_->getNodesHierarchical();
-        sendSuccessResponse(res, "nodes_hierarchical", nodes);
-    }
-    catch (const std::exception &e)
-    {
-        sendExceptionResponse(res, e);
-    }
+    // try
+    // {
+    //     if (!tdengine_manager_) {
+    //         sendErrorResponse(res, "TDengine manager not initialized");
+    //         return;
+    //     }
+    //     auto nodes = tdengine_manager_->getNodesHierarchical();
+    //     sendSuccessResponse(res, "nodes_hierarchical", nodes);
+    // }
+    // catch (const std::exception &e)
+    // {
+    //     sendExceptionResponse(res, e);
+    // }
 }

@@ -27,7 +27,10 @@ INCLUDES = -I$(SRC_DIR) \
 
 # 库目录
 LIB_DIRS = -L/usr/local/lib \
-           -L$(SQLITECPP_DIR)/build
+           -L/usr/lib \
+		   -L/usr/lib64 \
+           -L$(SQLITECPP_DIR)/build \
+		   -L/usr/local/taos/driver
 
 # Manager源文件
 MANAGER_BASE_SOURCES = $(wildcard $(MANAGER_DIR)/*.cpp)
@@ -40,7 +43,7 @@ MANAGER_SOURCES = $(MANAGER_BASE_SOURCES) \
 MANAGER_OBJECTS = $(MANAGER_SOURCES:%.cpp=$(BUILD_DIR)/%.o)
 
 # 依赖库
-MANAGER_LIBS = -lsqlite3 -lpthread -lSQLiteCpp
+MANAGER_LIBS = -lsqlite3 -lpthread -lSQLiteCpp -ltaos -l:libtaosws.so.3.3.6.9
 
 # 目标可执行文件
 MANAGER_TARGET = $(BUILD_DIR)/manager
