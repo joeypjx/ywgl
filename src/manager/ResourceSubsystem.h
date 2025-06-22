@@ -24,10 +24,11 @@ public:
     std::string getNodeListJson();
 
     /**
-     * @brief 获取所有可用节点及部分资源指标
-     * @return std::string JSON字符串格式的节点及其部分资源指标
+     * @brief 获取有用的节点
+     * @return std::string JSON字符串格式的节点
      */
-    std::string getAvailableNodesWithSomeMetrics();
+    std::string getAvailableNodes();
+
     
 private:
     std::shared_ptr<DatabaseManager> db_manager_;

@@ -800,6 +800,287 @@ nlohmann::json DatabaseManager::getNodesHierarchical() {
     }
 }
 
+
+nlohmann::json DatabaseManager::getOnlineNodesWithLatestMetrics() {
+    if (!db_) {
+        std::cerr << "Database connection not initialized in getNodesWithLatestMetrics." << std::endl;
+        return nlohmann::json::array();
+    }
+    
+    try {
+        nlohmann::json result = nlohmann::json::array();
+        
+        // 首先获取所有node的基本信息
+        SQLite::Statement query(*db_, R"(
+            SELECT id, box_id, slot_id, cpu_id, srio_id, host_ip, hostname, service_port, 
+                   box_type, board_type, cpu_type, os_type, resource_type, cpu_arch, 
+                   gpu, status, created_at, updated_at 
+            FROM node
+            WHERE status = 'online'
+            ORDER BY box_id, slot_id, cpu_id
+        )");
+        
+        while (query.executeStep()) {            
+            nlohmann::json node;
+            node["id"] = query.getColumn(0).getInt();
+            node["box_id"] = query.getColumn(1).getInt();
+            node["slot_id"] = query.getColumn(2).getInt();
+            node["cpu_id"] = query.getColumn(3).getInt();
+            node["srio_id"] = query.getColumn(4).getInt();
+            node["host_ip"] = query.getColumn(5).getString();
+            node["hostname"] = query.getColumn(6).getString();
+            node["service_port"] = query.getColumn(7).getInt();
+            node["box_type"] = query.getColumn(8).getString();
+            node["board_type"] = query.getColumn(9).getString();
+            node["cpu_type"] = query.getColumn(10).getString();
+            node["os_type"] = query.getColumn(11).getString();
+            node["resource_type"] = query.getColumn(12).getString();
+            node["cpu_arch"] = query.getColumn(13).getString();
+            // 解析GPU JSON字符串为JSON数组
+            std::string gpu_json = query.getColumn(14).getString();
+            try {
+                node["gpu"] = nlohmann::json::parse(gpu_json);
+            } catch (const std::exception& e) {
+                std::cerr << "Error parsing GPU JSON: " << e.what() << std::endl;
+                node["gpu"] = nlohmann::json::array();
+            }
+            node["status"] = query.getColumn(15).getString();
+            node["created_at"] = query.getColumn(16).getInt64();
+            node["updated_at"] = query.getColumn(17).getInt64();
+            
+            std::string host_ip = node["host_ip"];
+            // 获取最新的CPU metrics
+            SQLite::Statement cpu_query(*db_, R"(
+                SELECT timestamp, usage_percent, load_avg_1m, load_avg_5m, load_avg_15m, core_count,
+                       core_allocated, temperature, voltage, current, power
+                FROM node_cpu_metrics 
+                WHERE host_ip = ? 
+                ORDER BY timestamp DESC LIMIT 1
+            )");
+            cpu_query.bind(1, host_ip);
+            
+            if (cpu_query.executeStep()) {
+                nlohmann::json cpu_metrics;
+                cpu_metrics["timestamp"] = cpu_query.getColumn(0).getInt64();
+                cpu_metrics["usage_percent"] = cpu_query.getColumn(1).getDouble();
+                cpu_metrics["load_avg_1m"] = cpu_query.getColumn(2).getDouble();
+                cpu_metrics["load_avg_5m"] = cpu_query.getColumn(3).getDouble();
+                cpu_metrics["load_avg_15m"] = cpu_query.getColumn(4).getDouble();
+                cpu_metrics["core_count"] = cpu_query.getColumn(5).getInt();
+                cpu_metrics["core_allocated"] = cpu_query.getColumn(6).getInt();
+                cpu_metrics["temperature"] = cpu_query.getColumn(7).getDouble();
+                cpu_metrics["voltage"] = cpu_query.getColumn(8).getDouble();
+                cpu_metrics["current"] = cpu_query.getColumn(9).getDouble();
+                cpu_metrics["power"] = cpu_query.getColumn(10).getDouble();
+                node["latest_cpu_metrics"] = cpu_metrics;
+            } else {
+                node["latest_cpu_metrics"] = nlohmann::json::object();
+            }
+            
+            // 获取最新的Memory metrics
+            SQLite::Statement mem_query(*db_, R"(
+                SELECT timestamp, total, used, free, usage_percent 
+                FROM node_memory_metrics 
+                WHERE host_ip = ? 
+                ORDER BY timestamp DESC LIMIT 1
+            )");
+            mem_query.bind(1, host_ip);
+            
+            if (mem_query.executeStep()) {
+                nlohmann::json memory_metrics;
+                memory_metrics["timestamp"] = mem_query.getColumn(0).getInt64();
+                memory_metrics["total"] = mem_query.getColumn(1).getInt64();
+                memory_metrics["used"] = mem_query.getColumn(2).getInt64();
+                memory_metrics["free"] = mem_query.getColumn(3).getInt64();
+                memory_metrics["usage_percent"] = mem_query.getColumn(4).getDouble();
+                node["latest_memory_metrics"] = memory_metrics;
+            } else {
+                node["latest_memory_metrics"] = nlohmann::json::object();
+            }
+            
+            // 获取最新的Disk metrics
+            SQLite::Statement disk_query(*db_, R"(
+                SELECT id, timestamp, disk_count 
+                FROM node_disk_metrics 
+                WHERE host_ip = ? 
+                ORDER BY timestamp DESC LIMIT 1
+            )");
+            disk_query.bind(1, host_ip);
+            
+            if (disk_query.executeStep()) {
+                nlohmann::json disk_metrics;
+                long long slot_disk_metrics_id = disk_query.getColumn(0).getInt64();
+                disk_metrics["timestamp"] = disk_query.getColumn(1).getInt64();
+                disk_metrics["disk_count"] = disk_query.getColumn(2).getInt();
+                
+                // 获取磁盘详细信息
+                SQLite::Statement disk_usage_query(*db_, R"(
+                    SELECT device, mount_point, total, used, free, usage_percent 
+                    FROM node_disk_usage 
+                    WHERE slot_disk_metrics_id = ?
+                )");
+                disk_usage_query.bind(1, static_cast<int64_t>(slot_disk_metrics_id));
+                
+                nlohmann::json disks = nlohmann::json::array();
+                while (disk_usage_query.executeStep()) {
+                    nlohmann::json disk;
+                    disk["device"] = disk_usage_query.getColumn(0).getString();
+                    disk["mount_point"] = disk_usage_query.getColumn(1).getString();
+                    disk["total"] = disk_usage_query.getColumn(2).getInt64();
+                    disk["used"] = disk_usage_query.getColumn(3).getInt64();
+                    disk["free"] = disk_usage_query.getColumn(4).getInt64();
+                    disk["usage_percent"] = disk_usage_query.getColumn(5).getDouble();
+                    disks.push_back(disk);
+                }
+                disk_metrics["disks"] = disks;
+                node["latest_disk_metrics"] = disk_metrics;
+            } else {
+                node["latest_disk_metrics"] = nlohmann::json::object();
+            }
+            
+            // 获取最新的Network metrics
+            SQLite::Statement net_query(*db_, R"(
+                SELECT id, timestamp, network_count 
+                FROM node_network_metrics 
+                WHERE host_ip = ? 
+                ORDER BY timestamp DESC LIMIT 1
+            )");
+            net_query.bind(1, host_ip);
+            
+            if (net_query.executeStep()) {
+                nlohmann::json network_metrics;
+                long long slot_network_metrics_id = net_query.getColumn(0).getInt64();
+                network_metrics["timestamp"] = net_query.getColumn(1).getInt64();
+                network_metrics["network_count"] = net_query.getColumn(2).getInt();
+                
+                // 获取网络接口详细信息
+                SQLite::Statement net_usage_query(*db_, R"(
+                    SELECT interface, rx_bytes, tx_bytes, rx_packets, tx_packets, rx_errors, tx_errors 
+                    FROM node_network_usage 
+                    WHERE slot_network_metrics_id = ?
+                )");
+                net_usage_query.bind(1, static_cast<int64_t>(slot_network_metrics_id));
+                
+                nlohmann::json networks = nlohmann::json::array();
+                while (net_usage_query.executeStep()) {
+                    nlohmann::json network;
+                    network["interface"] = net_usage_query.getColumn(0).getString();
+                    network["rx_bytes"] = net_usage_query.getColumn(1).getInt64();
+                    network["tx_bytes"] = net_usage_query.getColumn(2).getInt64();
+                    network["rx_packets"] = net_usage_query.getColumn(3).getInt64();
+                    network["tx_packets"] = net_usage_query.getColumn(4).getInt64();
+                    network["rx_errors"] = net_usage_query.getColumn(5).getInt();
+                    network["tx_errors"] = net_usage_query.getColumn(6).getInt();
+                    networks.push_back(network);
+                }
+                network_metrics["networks"] = networks;
+                node["latest_network_metrics"] = network_metrics;
+            } else {
+                node["latest_network_metrics"] = nlohmann::json::object();
+            }
+            
+            // 获取最新的Docker metrics
+            SQLite::Statement docker_query(*db_, R"(
+                SELECT id, timestamp, container_count, running_count, paused_count, stopped_count 
+                FROM node_docker_metrics 
+                WHERE host_ip = ? 
+                ORDER BY timestamp DESC LIMIT 1
+            )");
+            docker_query.bind(1, host_ip);
+            
+            if (docker_query.executeStep()) {
+                nlohmann::json docker_metrics;
+                long long slot_docker_metric_id = docker_query.getColumn(0).getInt64();
+                docker_metrics["timestamp"] = docker_query.getColumn(1).getInt64();
+                docker_metrics["container_count"] = docker_query.getColumn(2).getInt();
+                docker_metrics["running_count"] = docker_query.getColumn(3).getInt();
+                docker_metrics["paused_count"] = docker_query.getColumn(4).getInt();
+                docker_metrics["stopped_count"] = docker_query.getColumn(5).getInt();
+                
+                // 获取容器详细信息
+                SQLite::Statement container_query(*db_, R"(
+                    SELECT instance_id, gpu_index, uuid, container_id, name, status, cpu_load, memory_used, memory_limit, network_tx, network_rx
+                    FROM node_docker_containers 
+                    WHERE slot_docker_metric_id = ?
+                )");
+                container_query.bind(1, static_cast<int64_t>(slot_docker_metric_id));
+                
+                nlohmann::json components = nlohmann::json::array();
+                while (container_query.executeStep()) {
+                    nlohmann::json component;
+                    component["instance_id"] = container_query.getColumn(0).getString();
+                    component["index"] = container_query.getColumn(1).getString();
+                    component["uuid"] = container_query.getColumn(2).getString();
+                    component["config"]["id"] = container_query.getColumn(3).getString();
+                    component["config"]["name"] = container_query.getColumn(4).getString();
+                    component["state"] = container_query.getColumn(5).getString();
+                    component["resource"]["cpu"]["load"] = container_query.getColumn(6).getDouble();
+                    component["resource"]["memory"]["mem_used"] = container_query.getColumn(7).getInt64();
+                    component["resource"]["memory"]["mem_limit"] = container_query.getColumn(8).getInt64();
+                    component["resource"]["network"]["tx"] = container_query.getColumn(9).getInt64();
+                    component["resource"]["network"]["rx"] = container_query.getColumn(10).getInt64();
+                    components.push_back(component);
+                }
+                docker_metrics["component"] = components;
+                node["latest_docker_metrics"] = docker_metrics;
+            } else {
+                node["latest_docker_metrics"] = nlohmann::json::object();
+            }
+            
+            // 获取最新的GPU metrics
+            SQLite::Statement gpu_query(*db_, R"(
+                SELECT id, timestamp, gpu_count 
+                FROM node_gpu_metrics 
+                WHERE host_ip = ? 
+                ORDER BY timestamp DESC LIMIT 1
+            )");
+            gpu_query.bind(1, host_ip);
+            
+            if (gpu_query.executeStep()) {
+                nlohmann::json gpu_metrics;
+                long long slot_gpu_metrics_id = gpu_query.getColumn(0).getInt64();
+                gpu_metrics["timestamp"] = gpu_query.getColumn(1).getInt64();
+                gpu_metrics["gpu_count"] = gpu_query.getColumn(2).getInt();
+                
+                // 获取GPU详细信息
+                SQLite::Statement gpu_usage_query(*db_, R"(
+                    SELECT gpu_index, name, compute_usage, mem_usage, mem_used, mem_total, temperature, voltage, current, power 
+                    FROM node_gpu_usage 
+                    WHERE slot_gpu_metrics_id = ?
+                )");
+                gpu_usage_query.bind(1, static_cast<int64_t>(slot_gpu_metrics_id));
+                
+                nlohmann::json gpus = nlohmann::json::array();
+                while (gpu_usage_query.executeStep()) {
+                    nlohmann::json gpu;
+                    gpu["index"] = gpu_usage_query.getColumn(0).getInt();
+                    gpu["name"] = gpu_usage_query.getColumn(1).getString();
+                    gpu["compute_usage"] = gpu_usage_query.getColumn(2).getDouble();
+                    gpu["mem_usage"] = gpu_usage_query.getColumn(3).getDouble();
+                    gpu["mem_used"] = gpu_usage_query.getColumn(4).getInt64();
+                    gpu["mem_total"] = gpu_usage_query.getColumn(5).getInt64();
+                    gpu["temperature"] = gpu_usage_query.getColumn(6).getDouble();
+                    gpu["voltage"] = gpu_usage_query.getColumn(7).getDouble();
+                    gpu["current"] = gpu_usage_query.getColumn(8).getDouble();
+                    gpu["power"] = gpu_usage_query.getColumn(9).getDouble();
+                    gpus.push_back(gpu);
+                }
+                gpu_metrics["gpus"] = gpus;
+                node["latest_gpu_metrics"] = gpu_metrics;
+            } else {
+                node["latest_gpu_metrics"] = nlohmann::json::object();
+            }
+            
+            result.push_back(node);
+        }
+        
+        return result;
+    } catch (const std::exception& e) {
+        std::cerr << "Error getting nodes with latest metrics: " << e.what() << std::endl;
+        return nlohmann::json::array();
+    }
+}
+
 // 获取所有node信息及其最新的metrics
 nlohmann::json DatabaseManager::getNodesWithLatestMetrics() {
     if (!db_) {

@@ -42,6 +42,7 @@ public:
     nlohmann::json getAllNodes();
     nlohmann::json getNodesHierarchical();
     nlohmann::json getNodesWithLatestMetrics();
+    nlohmann::json getOnlineNodesWithLatestMetrics();
 
     // Node Metrics Methods
     bool saveNodeCpuMetrics(const std::string& host_ip, long long timestamp, const nlohmann::json& cpu_data);

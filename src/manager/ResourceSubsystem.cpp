@@ -31,12 +31,13 @@ std::string ResourceSubsystem::getNodeListJson() {
     return nodes_json.dump();
 }
 
-std::string ResourceSubsystem::getAvailableNodesWithSomeMetrics() {
+std::string ResourceSubsystem::getAvailableNodes() {
     if (!db_manager_) {
         nlohmann::json error_json;
         error_json["error"] = "Database manager not initialized";
         return error_json.dump();
     }
+
     nlohmann::json nodes_metrics = db_manager_->getNodesWithLatestMetrics();
     nlohmann::json result;
     result["nodes"] = nlohmann::json::array();
@@ -78,6 +79,6 @@ std::string ResourceSubsystem::getAvailableNodesWithSomeMetrics() {
             node_info["gpu_free"] = 0;
         }
         result["nodes"].push_back(node_info);
-    }
+    }    
     return result.dump();
 } 
