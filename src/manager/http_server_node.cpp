@@ -123,13 +123,14 @@ void HTTPServer::handleResourceUpdate(const httplib::Request &req, httplib::Resp
             {"component", data["component"]}
         };
         
-        // alarm_subsystem_->updateNodeMetrics(data["host_ip"], metrics_data);
+        alarm_subsystem_->updateNodeMetrics(data["host_ip"], metrics_data);
 
-        // ModuleDataAccess moduleDataAccess;
-        // // data["component"] is array
-        // for (const auto& component : data["component"]) {
-        //     moduleDataAccess.updateComponentState(component["instance_id"], component["index"], component["state"], component["resource"]["cpu"]["load"], component["resource"]["memory"]["mem_used"], component["resource"]["memory"]["mem_limit"], component["resource"]["network"]["tx"], component["resource"]["network"]["rx"]);
-        // }
+        ModuleDataAccess moduleDataAccess;
+        // data["component"] is array
+        for (const auto& component : data["component"]) {
+            std::cout << "compupdateComponentStateonent: instance_id: " << component["instance_id"] << " index: " << component["index"] << " state: " << component["state"] << " cpu_load: " << component["resource"]["cpu"]["load"] << " mem_used: " << component["resource"]["memory"]["mem_used"] << " mem_limit: " << component["resource"]["memory"]["mem_limit"] << " network_tx: " << component["resource"]["network"]["tx"] << " network_rx: " << component["resource"]["network"]["rx"] << std::endl;
+            moduleDataAccess.updateComponentState(component["instance_id"], component["index"], component["state"], component["resource"]["cpu"]["load"], component["resource"]["memory"]["mem_used"], component["resource"]["memory"]["mem_limit"], component["resource"]["network"]["tx"], component["resource"]["network"]["rx"]);
+        }
 
         if (tdengine_manager_->saveMetrics(metrics_data))
         {

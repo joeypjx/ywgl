@@ -1,14 +1,37 @@
 #include "ResourceSubsystem.h"
 #include "database_manager.h"
+#include "tdengine_manager.h"
 #include <nlohmann/json.hpp>
 #include <iostream>
 
 ResourceSubsystem::ResourceSubsystem(std::shared_ptr<DatabaseManager> db_manager)
-    : db_manager_(db_manager) {
+    : db_manager_(db_manager), tdengine_manager_(nullptr) {
     if (db_manager_) {
         std::cout << "ResourceSubsystem initialized with DatabaseManager." << std::endl;
     } else {
         std::cout << "ResourceSubsystem initialized without a valid DatabaseManager." << std::endl;
+    }
+}
+
+ResourceSubsystem::ResourceSubsystem(std::shared_ptr<TDengineManager> tdengine_manager)
+    : db_manager_(nullptr), tdengine_manager_(tdengine_manager) {
+    if (tdengine_manager_) {
+        std::cout << "ResourceSubsystem initialized with TDengineManager." << std::endl;
+    } else {
+        std::cout << "ResourceSubsystem initialized without a valid TDengineManager." << std::endl;
+    }
+}
+
+ResourceSubsystem::ResourceSubsystem(std::shared_ptr<DatabaseManager> db_manager, std::shared_ptr<TDengineManager> tdengine_manager)
+    : db_manager_(db_manager), tdengine_manager_(tdengine_manager) {
+    if (db_manager_) {
+        std::cout << "ResourceSubsystem initialized with DatabaseManager." << std::endl;
+    }
+    if (tdengine_manager_) {
+        std::cout << "ResourceSubsystem initialized with TDengineManager." << std::endl;
+    }
+    if (!db_manager_ && !tdengine_manager_) {
+        std::cout << "ResourceSubsystem initialized without any valid managers." << std::endl;
     }
 }
 
@@ -32,13 +55,14 @@ std::string ResourceSubsystem::getNodeListJson() {
 }
 
 std::string ResourceSubsystem::getAvailableNodes() {
-    if (!db_manager_) {
+    if (!tdengine_manager_) {
         nlohmann::json error_json;
-        error_json["error"] = "Database manager not initialized";
+        error_json["error"] = "TDengine manager not initialized";
         return error_json.dump();
     }
 
-    nlohmann::json nodes_metrics = db_manager_->getNodesWithLatestMetrics();
+    nlohmann::json nodes_metrics = tdengine_manager_->getNodesWithLatestMetrics();
+
     nlohmann::json result;
     result["nodes"] = nlohmann::json::array();
     for (const auto& node : nodes_metrics) {

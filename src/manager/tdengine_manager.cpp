@@ -161,7 +161,6 @@ void TDengineManager::createTables() {
     executeQuery(R"(
         CREATE STABLE IF NOT EXISTS node_metrics.container_metrics (
             ts TIMESTAMP,
-            gpu_index INT,
             status BINARY(16),
             cpu_load FLOAT,
             memory_used BIGINT,
@@ -175,7 +174,8 @@ void TDengineManager::createTables() {
             container_id BINARY(64),
             container_name BINARY(64),
             instance_id BINARY(64),
-            uuid BINARY(36)
+            uuid BINARY(36),
+            component_index INT
         );
     )");
 }
@@ -308,9 +308,9 @@ bool TDengineManager::saveMetrics(const nlohmann::json& resource_usage) {
 
             std::string sql = "INSERT INTO " + sub_table_name +
                               " USING node_metrics.container_metrics TAGS ('" + host_ip + "', " + std::to_string(box_id) + ", " + std::to_string(slot_id) + ", '" +
-                              container_id + "', '" + container_name + "', '" + instance_id + "', '" + uuid + "')" +
-                              " VALUES (NOW, " +
-                              std::to_string(container.value("index", -1)) + ", '" +
+                              container_id + "', '" + container_name + "', '" + instance_id + "', '" + uuid + "', " +
+                              std::to_string(container.value("index", -1)) + ")" +
+                              " VALUES (NOW, '" +
                               container.value("state", "UNKNOWN") + "', " +
                               std::to_string(resource["cpu"].value("load", 0.0)) + ", " +
                               std::to_string(resource["memory"].value("mem_used", 0ULL)) + ", " +
@@ -500,7 +500,8 @@ nlohmann::json TDengineManager::queryTDengine(const std::string& sql) {
                         row_json[fields[i].name] = std::string(value, fields[i].bytes);
                         break;
                     case TSDB_DATA_TYPE_TIMESTAMP:
-                         row_json[fields[i].name] = *(int64_t*)value;
+                         // TDengine时间戳是纳秒级的，转换为毫秒级
+                         row_json[fields[i].name] = *(int64_t*)value / 1000000;
                         break;
                     default:
                         row_json[fields[i].name] = value;
@@ -518,6 +519,156 @@ nlohmann::json TDengineManager::queryTDengine(const std::string& sql) {
 }
 
 nlohmann::json TDengineManager::getNodesWithLatestMetrics() {
+    /*
+    nodes:
+    [
+            {
+                "board_type": "GPU",
+                "box_id": 1,
+                "box_type": "计算I型",
+                "cpu_arch": "aarch64",
+                "cpu_id": 1,
+                "cpu_type": " Phytium,D2000/8",
+                "created_at": 1750038100,
+                "gpu": [
+                    {
+                        "index": 0,
+                        "name": " Iluvatar MR-V50A"
+                    }
+                ],
+                "host_ip": "192.168.10.58",
+                "hostname": "localhost.localdomain",
+                "id": 1,
+                "latest_cpu_metrics": {
+                    "core_allocated": 0,
+                    "core_count": 8,
+                    "current": 2.0,
+                    "load_avg_15m": 0.69,
+                    "load_avg_1m": 1.12,
+                    "load_avg_5m": 1.12,
+                    "power": 23.8,
+                    "temperature": 35.0,
+                    "timestamp": 1750122089668,
+                    "usage_percent": 12.83806343906511,
+                    "voltage": 11.9
+                },
+                "latest_disk_metrics": {
+                    "disk_count": 2,
+                    "disks": [
+                        {
+                            "device": "/dev/mapper/klas-root",
+                            "free": 6929584128,
+                            "mount_point": "/",
+                            "total": 107321753600,
+                            "usage_percent": 93.54316911944309,
+                            "used": 100392169472
+                        },
+                        {
+                            "device": "/dev/mapper/klas-data",
+                            "free": 34764398592,
+                            "mount_point": "/data",
+                            "total": 255149084672,
+                            "usage_percent": 86.37486838853825,
+                            "used": 220384686080
+                        }
+                    ],
+                    "timestamp": 1750122089668
+                },
+                "latest_docker_metrics": {
+                    "component": [],
+                    "container_count": 0,
+                    "paused_count": 0,
+                    "running_count": 0,
+                    "stopped_count": 0,
+                    "timestamp": 1750122089668
+                },
+                "latest_gpu_metrics": {
+                    "gpu_count": 1,
+                    "gpus": [
+                        {
+                            "compute_usage": 0.0,
+                            "current": 0.0,
+                            "index": 0,
+                            "mem_total": 17179869184,
+                            "mem_usage": 1.0,
+                            "mem_used": 119537664,
+                            "name": " Iluvatar MR-V50A",
+                            "power": 0.0,
+                            "temperature": 0.0,
+                            "voltage": 0.0
+                        }
+                    ],
+                    "timestamp": 1750122089668
+                },
+                "latest_memory_metrics": {
+                    "free": 12675907584,
+                    "timestamp": 1750122089668,
+                    "total": 15647768576,
+                    "usage_percent": 18.992235075345736,
+                    "used": 2971860992
+                },
+                "latest_network_metrics": {
+                    "network_count": 5,
+                    "networks": [
+                        {
+                            "interface": "bond0",
+                            "rx_bytes": 0,
+                            "rx_errors": 0,
+                            "rx_packets": 0,
+                            "tx_bytes": 0,
+                            "tx_errors": 0,
+                            "tx_packets": 0
+                        },
+                        {
+                            "interface": "docker0",
+                            "rx_bytes": 0,
+                            "rx_errors": 0,
+                            "rx_packets": 0,
+                            "tx_bytes": 716,
+                            "tx_errors": 0,
+                            "tx_packets": 8
+                        },
+                        {
+                            "interface": "virbr0",
+                            "rx_bytes": 0,
+                            "rx_errors": 0,
+                            "rx_packets": 0,
+                            "tx_bytes": 0,
+                            "tx_errors": 0,
+                            "tx_packets": 0
+                        },
+                        {
+                            "interface": "docker_gwbridge",
+                            "rx_bytes": 0,
+                            "rx_errors": 0,
+                            "rx_packets": 0,
+                            "tx_bytes": 446,
+                            "tx_errors": 0,
+                            "tx_packets": 5
+                        },
+                        {
+                            "interface": "enaphyt4i0",
+                            "rx_bytes": 3947210,
+                            "rx_errors": 0,
+                            "rx_packets": 40992,
+                            "tx_bytes": 12865772,
+                            "tx_errors": 0,
+                            "tx_packets": 19010
+                        }
+                    ],
+                    "timestamp": 1750122089668
+                },
+                "os_type": "Kylin Linux Advanced Server V10",
+                "resource_type": "GPU I",
+                "service_port": 23980,
+                "slot_id": 1,
+                "srio_id": 5,
+                "status": "online",
+                "updated_at": 1750122094
+            }
+        ]
+
+    */
     nlohmann::json nodes = getAllNodesInfo();
 
     for (auto& node : nodes) {
@@ -530,34 +681,145 @@ nlohmann::json TDengineManager::getNodesWithLatestMetrics() {
         int slot_id = node["slot_id"].get<int>();
         int cpu_id = node["cpu_id"].get<int>();
 
-        // 1. Get latest server metrics
+        // 1. Get latest server metrics and split into CPU and Memory metrics
         std::string server_table_name = "server_" + std::to_string(box_id) + "_" + std::to_string(slot_id) + "_" + std::to_string(cpu_id);
         nlohmann::json server_metrics = queryTDengine("SELECT LAST_ROW(*) FROM node_metrics." + server_table_name);
-        node["latest_server_metrics"] = server_metrics.empty() ? nlohmann::json::object() : server_metrics[0];
+        
+        if (!server_metrics.empty()) {
+            const auto& server_data = server_metrics[0];
+            
+            // CPU metrics
+            nlohmann::json cpu_metrics;
+            cpu_metrics["core_allocated"] = server_data.value("last_row(core_allocated)", 0);
+            cpu_metrics["core_count"] = server_data.value("last_row(core_count)", 0);
+            cpu_metrics["current"] = 0.0; // 需要从其他地方获取
+            cpu_metrics["load_avg_15m"] = server_data.value("last_row(load_avg_15m)", 0.0);
+            cpu_metrics["load_avg_1m"] = server_data.value("last_row(load_avg_1m)", 0.0);
+            cpu_metrics["load_avg_5m"] = server_data.value("last_row(load_avg_5m)", 0.0);
+            cpu_metrics["power"] = server_data.value("last_row(cpu_power)", 0.0);
+            cpu_metrics["temperature"] = server_data.value("last_row(cpu_temperature)", 0.0);
+            cpu_metrics["timestamp"] = server_data.value("last_row(ts)", 0);
+            cpu_metrics["usage_percent"] = server_data.value("last_row(cpu_usage_percent)", 0.0);
+            cpu_metrics["voltage"] = 0.0; // 需要从其他地方获取
+            node["latest_cpu_metrics"] = cpu_metrics;
+            
+            // Memory metrics
+            nlohmann::json memory_metrics;
+            memory_metrics["free"] = server_data.value("last_row(mem_free)", 0ULL);
+            memory_metrics["timestamp"] = server_data.value("last_row(ts)", 0);
+            memory_metrics["total"] = server_data.value("last_row(mem_total)", 0ULL);
+            memory_metrics["usage_percent"] = server_data.value("last_row(mem_usage_percent)", 0.0);
+            memory_metrics["used"] = server_data.value("last_row(mem_used)", 0ULL);
+            node["latest_memory_metrics"] = memory_metrics;
+        } else {
+            node["latest_cpu_metrics"] = nlohmann::json::object();
+            node["latest_memory_metrics"] = nlohmann::json::object();
+        }
 
         // 2. Get latest GPU metrics
         std::string gpu_query_sql = "SELECT LAST_ROW(*) FROM node_metrics.gpu_metrics WHERE "
                                   "host_ip = '" + host_ip + "' AND box_id = " + std::to_string(box_id) + " AND slot_id = " + std::to_string(slot_id) +
                                   " GROUP BY gpu_index";
-        node["latest_gpu_metrics"] = queryTDengine(gpu_query_sql);
+        nlohmann::json gpu_metrics_result = queryTDengine(gpu_query_sql);
+        
+        nlohmann::json gpu_metrics;
+        gpu_metrics["gpu_count"] = gpu_metrics_result.size();
+        gpu_metrics["gpus"] = nlohmann::json::array();
+        
+        for (const auto& gpu_data : gpu_metrics_result) {
+            nlohmann::json gpu_info;
+            gpu_info["compute_usage"] = gpu_data.value("last_row(compute_usage)", 0.0);
+            gpu_info["current"] = 0.0; // 需要从其他地方获取
+            gpu_info["index"] = gpu_data.value("gpu_index", -1); // TAGS字段不需要last_row前缀
+            gpu_info["mem_total"] = gpu_data.value("last_row(mem_total)", 0ULL);
+            gpu_info["mem_usage"] = gpu_data.value("last_row(mem_usage)", 0.0);
+            gpu_info["mem_used"] = gpu_data.value("last_row(mem_used)", 0ULL);
+            gpu_info["name"] = gpu_data.value("gpu_name", ""); // TAGS字段不需要last_row前缀
+            gpu_info["power"] = gpu_data.value("last_row(power)", 0.0);
+            gpu_info["temperature"] = gpu_data.value("last_row(temperature)", 0.0);
+            gpu_info["voltage"] = 0.0; // 需要从其他地方获取
+            gpu_metrics["gpus"].push_back(gpu_info);
+        }
+        
+        gpu_metrics["timestamp"] = gpu_metrics_result.empty() ? 0 : gpu_metrics_result[0].value("last_row(ts)", 0);
+        node["latest_gpu_metrics"] = gpu_metrics;
         
         // 3. Get latest Disk metrics
         std::string disk_query_sql = "SELECT LAST_ROW(*) FROM node_metrics.disk_metrics WHERE "
                                    "host_ip = '" + host_ip + "' AND box_id = " + std::to_string(box_id) + " AND slot_id = " + std::to_string(slot_id) +
                                    " GROUP BY device, mount_point";
-        node["latest_disk_metrics"] = queryTDengine(disk_query_sql);
+        nlohmann::json disk_metrics_result = queryTDengine(disk_query_sql);
+        
+        nlohmann::json disk_metrics;
+        disk_metrics["disk_count"] = disk_metrics_result.size();
+        disk_metrics["disks"] = nlohmann::json::array();
+        
+        for (const auto& disk_data : disk_metrics_result) {
+            nlohmann::json disk_info;
+            disk_info["device"] = disk_data.value("device", ""); // TAGS字段不需要last_row前缀
+            disk_info["free"] = disk_data.value("last_row(free)", 0ULL);
+            disk_info["mount_point"] = disk_data.value("mount_point", ""); // TAGS字段不需要last_row前缀
+            disk_info["total"] = disk_data.value("last_row(total)", 0ULL);
+            disk_info["usage_percent"] = disk_data.value("last_row(usage_percent)", 0.0);
+            disk_info["used"] = disk_data.value("last_row(used)", 0ULL);
+            disk_metrics["disks"].push_back(disk_info);
+        }
+        
+        disk_metrics["timestamp"] = disk_metrics_result.empty() ? 0 : disk_metrics_result[0].value("last_row(ts)", 0);
+        node["latest_disk_metrics"] = disk_metrics;
 
         // 4. Get latest Network metrics
         std::string net_query_sql = "SELECT LAST_ROW(*) FROM node_metrics.net_metrics WHERE "
                                   "host_ip = '" + host_ip + "' AND box_id = " + std::to_string(box_id) + " AND slot_id = " + std::to_string(slot_id) +
                                   " GROUP BY interface";
-        node["latest_network_metrics"] = queryTDengine(net_query_sql);
+        nlohmann::json net_metrics_result = queryTDengine(net_query_sql);
+        
+        nlohmann::json network_metrics;
+        network_metrics["network_count"] = net_metrics_result.size();
+        network_metrics["networks"] = nlohmann::json::array();
+        
+        for (const auto& net_data : net_metrics_result) {
+            nlohmann::json net_info;
+            net_info["interface"] = net_data.value("interface", ""); // TAGS字段不需要last_row前缀
+            net_info["rx_bytes"] = net_data.value("last_row(rx_bytes)", 0ULL);
+            net_info["rx_errors"] = net_data.value("last_row(rx_errors)", 0);
+            net_info["rx_packets"] = net_data.value("last_row(rx_packets)", 0ULL);
+            net_info["tx_bytes"] = net_data.value("last_row(tx_bytes)", 0ULL);
+            net_info["tx_errors"] = net_data.value("last_row(tx_errors)", 0);
+            net_info["tx_packets"] = net_data.value("last_row(tx_packets)", 0ULL);
+            network_metrics["networks"].push_back(net_info);
+        }
+        
+        network_metrics["timestamp"] = net_metrics_result.empty() ? 0 : net_metrics_result[0].value("last_row(ts)", 0);
+        node["latest_network_metrics"] = network_metrics;
 
         // 5. Get latest Container metrics
         std::string container_query_sql = "SELECT LAST_ROW(*) FROM node_metrics.container_metrics WHERE "
                                         "host_ip = '" + host_ip + "' AND box_id = " + std::to_string(box_id) + " AND slot_id = " + std::to_string(slot_id) +
-                                        " GROUP BY container_id";
-        node["latest_container_metrics"] = queryTDengine(container_query_sql);
+                                        " GROUP BY container_id, component_index";
+        nlohmann::json container_metrics_result = queryTDengine(container_query_sql);
+        
+        nlohmann::json docker_metrics;
+        docker_metrics["component"] = nlohmann::json::array(); // 需要从其他地方获取完整的容器信息
+        docker_metrics["container_count"] = container_metrics_result.size();
+        docker_metrics["paused_count"] = 0; // 需要统计状态
+        docker_metrics["running_count"] = 0; // 需要统计状态
+        docker_metrics["stopped_count"] = 0; // 需要统计状态
+        
+        // 统计容器状态
+        for (const auto& container_data : container_metrics_result) {
+            std::string status = container_data.value("last_row(status)", "");
+            if (status == "running") {
+                docker_metrics["running_count"] = docker_metrics["running_count"].get<int>() + 1;
+            } else if (status == "paused") {
+                docker_metrics["paused_count"] = docker_metrics["paused_count"].get<int>() + 1;
+            } else if (status == "stopped") {
+                docker_metrics["stopped_count"] = docker_metrics["stopped_count"].get<int>() + 1;
+            }
+        }
+        
+        docker_metrics["timestamp"] = container_metrics_result.empty() ? 0 : container_metrics_result[0].value("last_row(ts)", 0);
+        node["latest_docker_metrics"] = docker_metrics;
     }
 
     return nodes;

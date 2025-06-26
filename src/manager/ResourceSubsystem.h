@@ -6,6 +6,7 @@
 
 // 前向声明
 class DatabaseManager;
+class TDengineManager;
 
 /**
  * @brief ResourceSubsystem类 - 资源管理子系统
@@ -15,6 +16,8 @@ class DatabaseManager;
 class ResourceSubsystem {
 public:
     explicit ResourceSubsystem(std::shared_ptr<DatabaseManager> db_manager);
+    explicit ResourceSubsystem(std::shared_ptr<TDengineManager> tdengine_manager);
+    explicit ResourceSubsystem(std::shared_ptr<DatabaseManager> db_manager, std::shared_ptr<TDengineManager> tdengine_manager);
     ~ResourceSubsystem();
 
     /**
@@ -32,6 +35,7 @@ public:
     
 private:
     std::shared_ptr<DatabaseManager> db_manager_;
+    std::shared_ptr<TDengineManager> tdengine_manager_;
 };
 
 #endif // RESOURCE_SUBSYSTEM_H 

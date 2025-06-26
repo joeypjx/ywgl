@@ -123,7 +123,7 @@ bool Manager::initialize() {
     }
 
     // 初始化ResourceSubsystem
-    resource_subsystem_ = std::make_shared<ResourceSubsystem>(db_manager_);
+    resource_subsystem_ = std::make_shared<ResourceSubsystem>(db_manager_, tdengine_manager_);
     resource_subsystem_instance_ = resource_subsystem_; // 保存到静态变量
 
     alarm_subsystem_ = std::make_shared<AlarmSubsystem>(db_manager_);
