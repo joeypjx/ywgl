@@ -466,9 +466,10 @@ nlohmann::json TDengineManager::queryTDengine(const std::string& sql) {
 
     int num_fields = ws_field_count(res);
     const WS_FIELD* fields = ws_fetch_fields(res);
+    int* lengths = ws_fetch_lengths(res);
 
     WS_ROW row;
-    while ((row = ws_fetch_row(res))) {
+    while ((row = ws_fetch_row_r(res, lengths))) {
         nlohmann::json row_json;
         for (int i = 0; i < num_fields; ++i) {
             const char* value = (const char*)row[i];
@@ -497,9 +498,7 @@ nlohmann::json TDengineManager::queryTDengine(const std::string& sql) {
                         break;
                     case TSDB_DATA_TYPE_BINARY:
                     case TSDB_DATA_TYPE_NCHAR: {
-                        // 对于字符串类型，使用安全的方式处理
-                        size_t len = strnlen(value, fields[i].bytes);
-                        row_json[fields[i].name] = std::string(value, len);
+                        row_json[fields[i].name] = std::string(value, lengths[i]);
                         break;
                     }
                     case TSDB_DATA_TYPE_TIMESTAMP:
@@ -507,9 +506,7 @@ nlohmann::json TDengineManager::queryTDengine(const std::string& sql) {
                          row_json[fields[i].name] = *(int64_t*)value / 1000000;
                         break;
                     default: {
-                        // 对于未知类型，也使用安全的字符串处理方式
-                        size_t len = strnlen(value, fields[i].bytes);
-                        row_json[fields[i].name] = std::string(value, len);
+                        row_json[fields[i].name] = std::string(value, lengths[i]);
                         break;
                     }
                 }
