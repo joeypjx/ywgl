@@ -496,16 +496,22 @@ nlohmann::json TDengineManager::queryTDengine(const std::string& sql) {
                         row_json[fields[i].name] = *(double*)value;
                         break;
                     case TSDB_DATA_TYPE_BINARY:
-                    case TSDB_DATA_TYPE_NCHAR:
-                        row_json[fields[i].name] = std::string(value, fields[i].bytes);
+                    case TSDB_DATA_TYPE_NCHAR: {
+                        // 对于字符串类型，使用安全的方式处理
+                        size_t len = strnlen(value, fields[i].bytes);
+                        row_json[fields[i].name] = std::string(value, len);
                         break;
+                    }
                     case TSDB_DATA_TYPE_TIMESTAMP:
                          // TDengine时间戳是纳秒级的，转换为毫秒级
                          row_json[fields[i].name] = *(int64_t*)value / 1000000;
                         break;
-                    default:
-                        row_json[fields[i].name] = value;
+                    default: {
+                        // 对于未知类型，也使用安全的字符串处理方式
+                        size_t len = strnlen(value, fields[i].bytes);
+                        row_json[fields[i].name] = std::string(value, len);
                         break;
+                    }
                 }
             } else {
                  row_json[fields[i].name] = nullptr;
@@ -717,108 +723,146 @@ nlohmann::json TDengineManager::getNodesWithLatestMetrics() {
         }
 
         // 2. Get latest GPU metrics
-        std::string gpu_query_sql = "SELECT LAST_ROW(*) FROM node_metrics.gpu_metrics WHERE "
-                                  "host_ip = '" + host_ip + "' AND box_id = " + std::to_string(box_id) + " AND slot_id = " + std::to_string(slot_id) +
-                                  " GROUP BY gpu_index";
-        nlohmann::json gpu_metrics_result = queryTDengine(gpu_query_sql);
+        // 需要查询所有GPU子表，因为每个GPU都有独立的子表
+        nlohmann::json gpu_metrics_result = queryTDengine("SHOW TABLES LIKE 'gpu_" + std::to_string(box_id) + "_" + std::to_string(slot_id) + "_%'");
         
         nlohmann::json gpu_metrics;
-        gpu_metrics["gpu_count"] = gpu_metrics_result.size();
+        gpu_metrics["gpu_count"] = 0;
         gpu_metrics["gpus"] = nlohmann::json::array();
         
-        for (const auto& gpu_data : gpu_metrics_result) {
-            nlohmann::json gpu_info;
-            gpu_info["compute_usage"] = gpu_data.value("last_row(compute_usage)", 0.0);
-            gpu_info["current"] = 0.0; // 需要从其他地方获取
-            gpu_info["index"] = gpu_data.value("gpu_index", -1); // TAGS字段不需要last_row前缀
-            gpu_info["mem_total"] = gpu_data.value("last_row(mem_total)", 0ULL);
-            gpu_info["mem_usage"] = gpu_data.value("last_row(mem_usage)", 0.0);
-            gpu_info["mem_used"] = gpu_data.value("last_row(mem_used)", 0ULL);
-            gpu_info["name"] = gpu_data.value("gpu_name", ""); // TAGS字段不需要last_row前缀
-            gpu_info["power"] = gpu_data.value("last_row(power)", 0.0);
-            gpu_info["temperature"] = gpu_data.value("last_row(temperature)", 0.0);
-            gpu_info["voltage"] = 0.0; // 需要从其他地方获取
-            gpu_metrics["gpus"].push_back(gpu_info);
+        // 从表名列表中提取GPU索引并查询每个GPU的最新数据
+        for (const auto& table_info : gpu_metrics_result) {
+            std::string table_name = table_info.value("table_name", "");
+            if (table_name.empty()) continue;
+            
+            // 从表名中提取GPU索引: gpu_box_slot_index
+            size_t last_underscore = table_name.find_last_of('_');
+            if (last_underscore == std::string::npos) continue;
+            
+            std::string gpu_index_str = table_name.substr(last_underscore + 1);
+            int gpu_index = std::stoi(gpu_index_str);
+            
+            // 查询这个GPU的最新数据
+            nlohmann::json gpu_data = queryTDengine("SELECT LAST_ROW(*) FROM " + table_name);
+            if (!gpu_data.empty()) {
+                const auto& data = gpu_data[0];
+                nlohmann::json gpu_info;
+                gpu_info["compute_usage"] = data.value("last_row(compute_usage)", 0.0);
+                gpu_info["current"] = 0.0; // 需要从其他地方获取
+                gpu_info["index"] = gpu_index;
+                gpu_info["mem_total"] = data.value("last_row(mem_total)", 0ULL);
+                gpu_info["mem_usage"] = data.value("last_row(mem_usage)", 0.0);
+                gpu_info["mem_used"] = data.value("last_row(mem_used)", 0ULL);
+                gpu_info["name"] = data.value("gpu_name", ""); // TAGS字段不需要last_row前缀
+                gpu_info["power"] = data.value("last_row(power)", 0.0);
+                gpu_info["temperature"] = data.value("last_row(temperature)", 0.0);
+                gpu_info["voltage"] = 0.0; // 需要从其他地方获取
+                gpu_metrics["gpus"].push_back(gpu_info);
+                gpu_metrics["gpu_count"] = gpu_metrics["gpu_count"].get<int>() + 1;
+            }
         }
         
-        gpu_metrics["timestamp"] = gpu_metrics_result.empty() ? 0 : gpu_metrics_result[0].value("last_row(ts)", 0);
+        gpu_metrics["timestamp"] = gpu_metrics["gpus"].empty() ? 0 : gpu_metrics["gpus"][0].value("timestamp", 0);
         node["latest_gpu_metrics"] = gpu_metrics;
         
         // 3. Get latest Disk metrics
-        std::string disk_query_sql = "SELECT LAST_ROW(*) FROM node_metrics.disk_metrics WHERE "
-                                   "host_ip = '" + host_ip + "' AND box_id = " + std::to_string(box_id) + " AND slot_id = " + std::to_string(slot_id) +
-                                   " GROUP BY device, mount_point";
-        nlohmann::json disk_metrics_result = queryTDengine(disk_query_sql);
+        // 需要查询所有磁盘子表，因为每个磁盘都有独立的子表
+        nlohmann::json disk_metrics_result = queryTDengine("SHOW TABLES LIKE 'disk_" + std::to_string(box_id) + "_" + std::to_string(slot_id) + "_%'");
         
         nlohmann::json disk_metrics;
-        disk_metrics["disk_count"] = disk_metrics_result.size();
+        disk_metrics["disk_count"] = 0;
         disk_metrics["disks"] = nlohmann::json::array();
         
-        for (const auto& disk_data : disk_metrics_result) {
-            nlohmann::json disk_info;
-            disk_info["device"] = disk_data.value("device", ""); // TAGS字段不需要last_row前缀
-            disk_info["free"] = disk_data.value("last_row(free)", 0ULL);
-            disk_info["mount_point"] = disk_data.value("mount_point", ""); // TAGS字段不需要last_row前缀
-            disk_info["total"] = disk_data.value("last_row(total)", 0ULL);
-            disk_info["usage_percent"] = disk_data.value("last_row(usage_percent)", 0.0);
-            disk_info["used"] = disk_data.value("last_row(used)", 0ULL);
-            disk_metrics["disks"].push_back(disk_info);
+        // 从表名列表中查询每个磁盘的最新数据
+        for (const auto& table_info : disk_metrics_result) {
+            std::string table_name = table_info.value("table_name", "");
+            if (table_name.empty()) continue;
+            
+            // 查询这个磁盘的最新数据
+            nlohmann::json disk_data = queryTDengine("SELECT LAST_ROW(*) FROM " + table_name);
+            if (!disk_data.empty()) {
+                const auto& data = disk_data[0];
+                nlohmann::json disk_info;
+                disk_info["device"] = data.value("device", ""); // TAGS字段不需要last_row前缀
+                disk_info["free"] = data.value("last_row(free)", 0ULL);
+                disk_info["mount_point"] = data.value("mount_point", ""); // TAGS字段不需要last_row前缀
+                disk_info["total"] = data.value("last_row(total)", 0ULL);
+                disk_info["usage_percent"] = data.value("last_row(usage_percent)", 0.0);
+                disk_info["used"] = data.value("last_row(used)", 0ULL);
+                disk_metrics["disks"].push_back(disk_info);
+                disk_metrics["disk_count"] = disk_metrics["disk_count"].get<int>() + 1;
+            }
         }
         
-        disk_metrics["timestamp"] = disk_metrics_result.empty() ? 0 : disk_metrics_result[0].value("last_row(ts)", 0);
+        disk_metrics["timestamp"] = disk_metrics["disks"].empty() ? 0 : disk_metrics["disks"][0].value("timestamp", 0);
         node["latest_disk_metrics"] = disk_metrics;
 
         // 4. Get latest Network metrics
-        std::string net_query_sql = "SELECT LAST_ROW(*) FROM node_metrics.net_metrics WHERE "
-                                  "host_ip = '" + host_ip + "' AND box_id = " + std::to_string(box_id) + " AND slot_id = " + std::to_string(slot_id) +
-                                  " GROUP BY interface";
-        nlohmann::json net_metrics_result = queryTDengine(net_query_sql);
+        // 需要查询所有网络接口子表，因为每个网络接口都有独立的子表
+        nlohmann::json net_metrics_result = queryTDengine("SHOW TABLES LIKE 'net_" + std::to_string(box_id) + "_" + std::to_string(slot_id) + "_%'");
         
         nlohmann::json network_metrics;
-        network_metrics["network_count"] = net_metrics_result.size();
+        network_metrics["network_count"] = 0;
         network_metrics["networks"] = nlohmann::json::array();
         
-        for (const auto& net_data : net_metrics_result) {
-            nlohmann::json net_info;
-            net_info["interface"] = net_data.value("interface", ""); // TAGS字段不需要last_row前缀
-            net_info["rx_bytes"] = net_data.value("last_row(rx_bytes)", 0ULL);
-            net_info["rx_errors"] = net_data.value("last_row(rx_errors)", 0);
-            net_info["rx_packets"] = net_data.value("last_row(rx_packets)", 0ULL);
-            net_info["tx_bytes"] = net_data.value("last_row(tx_bytes)", 0ULL);
-            net_info["tx_errors"] = net_data.value("last_row(tx_errors)", 0);
-            net_info["tx_packets"] = net_data.value("last_row(tx_packets)", 0ULL);
-            network_metrics["networks"].push_back(net_info);
+        // 从表名列表中查询每个网络接口的最新数据
+        for (const auto& table_info : net_metrics_result) {
+            std::string table_name = table_info.value("table_name", "");
+            if (table_name.empty()) continue;
+            
+            // 查询这个网络接口的最新数据
+            nlohmann::json net_data = queryTDengine("SELECT LAST_ROW(*) FROM " + table_name);
+            if (!net_data.empty()) {
+                const auto& data = net_data[0];
+                nlohmann::json net_info;
+                net_info["interface"] = data.value("interface", ""); // TAGS字段不需要last_row前缀
+                net_info["rx_bytes"] = data.value("last_row(rx_bytes)", 0ULL);
+                net_info["rx_errors"] = data.value("last_row(rx_errors)", 0);
+                net_info["rx_packets"] = data.value("last_row(rx_packets)", 0ULL);
+                net_info["tx_bytes"] = data.value("last_row(tx_bytes)", 0ULL);
+                net_info["tx_errors"] = data.value("last_row(tx_errors)", 0);
+                net_info["tx_packets"] = data.value("last_row(tx_packets)", 0ULL);
+                network_metrics["networks"].push_back(net_info);
+                network_metrics["network_count"] = network_metrics["network_count"].get<int>() + 1;
+            }
         }
         
-        network_metrics["timestamp"] = net_metrics_result.empty() ? 0 : net_metrics_result[0].value("last_row(ts)", 0);
+        network_metrics["timestamp"] = network_metrics["networks"].empty() ? 0 : network_metrics["networks"][0].value("timestamp", 0);
         node["latest_network_metrics"] = network_metrics;
 
         // 5. Get latest Container metrics
-        std::string container_query_sql = "SELECT LAST_ROW(*) FROM node_metrics.container_metrics WHERE "
-                                        "host_ip = '" + host_ip + "' AND box_id = " + std::to_string(box_id) + " AND slot_id = " + std::to_string(slot_id) +
-                                        " GROUP BY container_id, component_index";
-        nlohmann::json container_metrics_result = queryTDengine(container_query_sql);
+        // 需要查询所有容器子表，因为每个容器都有独立的子表
+        nlohmann::json container_metrics_result = queryTDengine("SHOW TABLES LIKE 'container_" + std::to_string(box_id) + "_" + std::to_string(slot_id) + "_%'");
         
         nlohmann::json docker_metrics;
         docker_metrics["component"] = nlohmann::json::array(); // 需要从其他地方获取完整的容器信息
-        docker_metrics["container_count"] = container_metrics_result.size();
+        docker_metrics["container_count"] = 0;
         docker_metrics["paused_count"] = 0; // 需要统计状态
         docker_metrics["running_count"] = 0; // 需要统计状态
         docker_metrics["stopped_count"] = 0; // 需要统计状态
         
-        // 统计容器状态
-        for (const auto& container_data : container_metrics_result) {
-            std::string status = container_data.value("last_row(status)", "");
-            if (status == "running") {
-                docker_metrics["running_count"] = docker_metrics["running_count"].get<int>() + 1;
-            } else if (status == "paused") {
-                docker_metrics["paused_count"] = docker_metrics["paused_count"].get<int>() + 1;
-            } else if (status == "stopped") {
-                docker_metrics["stopped_count"] = docker_metrics["stopped_count"].get<int>() + 1;
+        // 从表名列表中查询每个容器的最新数据并统计状态
+        for (const auto& table_info : container_metrics_result) {
+            std::string table_name = table_info.value("table_name", "");
+            if (table_name.empty()) continue;
+            
+            // 查询这个容器的最新数据
+            nlohmann::json container_data = queryTDengine("SELECT LAST_ROW(*) FROM " + table_name);
+            if (!container_data.empty()) {
+                const auto& data = container_data[0];
+                std::string status = data.value("last_row(status)", "");
+                if (status == "running") {
+                    docker_metrics["running_count"] = docker_metrics["running_count"].get<int>() + 1;
+                } else if (status == "paused") {
+                    docker_metrics["paused_count"] = docker_metrics["paused_count"].get<int>() + 1;
+                } else if (status == "stopped") {
+                    docker_metrics["stopped_count"] = docker_metrics["stopped_count"].get<int>() + 1;
+                }
+                docker_metrics["container_count"] = docker_metrics["container_count"].get<int>() + 1;
             }
         }
         
-        docker_metrics["timestamp"] = container_metrics_result.empty() ? 0 : container_metrics_result[0].value("last_row(ts)", 0);
+        docker_metrics["timestamp"] = docker_metrics["container_count"].get<int>() == 0 ? 0 : 0; // 需要从实际数据中获取时间戳
         node["latest_docker_metrics"] = docker_metrics;
     }
 

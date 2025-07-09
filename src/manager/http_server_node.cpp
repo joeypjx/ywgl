@@ -129,8 +129,11 @@ void HTTPServer::handleResourceUpdate(const httplib::Request &req, httplib::Resp
         // data["component"] is array
         for (const auto& component : data["component"]) {
             // mem usage is mem used / mem limit
-            //component["resource"]["memory"]["mem_used"] is json object, need to get the value
-            double mem_usage = component["resource"]["memory"]["mem_used"].get<double>() / component["resource"]["memory"]["mem_limit"].get<double>();
+            //component["resource"]["memory"]["mem_used"] is json object, need to get the value. and limit may be 0 or null
+            double mem_usage = 0;
+            if (component["resource"]["memory"]["mem_limit"].get<double>() != 0) {
+                mem_usage = component["resource"]["memory"]["mem_used"].get<double>() / component["resource"]["memory"]["mem_limit"].get<double>();
+            }
             std::cout << "compupdateComponentStateonent: instance_id: " << component["instance_id"] << " index: " << component["index"] << " state: " << component["state"] << " cpu_load: " << component["resource"]["cpu"]["load"] << " mem_usage: " << mem_usage << " network_tx: " << component["resource"]["network"]["tx"] << " network_rx: " << component["resource"]["network"]["rx"] << std::endl;
             moduleDataAccess.updateComponentState(component["instance_id"], component["index"], component["state"], component["resource"]["cpu"]["load"], mem_usage, 0, component["resource"]["network"]["tx"], component["resource"]["network"]["rx"]);
         }

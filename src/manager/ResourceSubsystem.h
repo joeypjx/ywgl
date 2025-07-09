@@ -5,7 +5,6 @@
 #include <memory>
 
 // 前向声明
-class DatabaseManager;
 class TDengineManager;
 
 /**
@@ -15,16 +14,8 @@ class TDengineManager;
  */
 class ResourceSubsystem {
 public:
-    explicit ResourceSubsystem(std::shared_ptr<DatabaseManager> db_manager);
     explicit ResourceSubsystem(std::shared_ptr<TDengineManager> tdengine_manager);
-    explicit ResourceSubsystem(std::shared_ptr<DatabaseManager> db_manager, std::shared_ptr<TDengineManager> tdengine_manager);
     ~ResourceSubsystem();
-
-    /**
-     * @brief 获取所有节点的列表
-     * @return std::string JSON字符串格式的节点列表
-     */
-    std::string getNodeListJson();
 
     /**
      * @brief 获取有用的节点
@@ -34,7 +25,6 @@ public:
 
     
 private:
-    std::shared_ptr<DatabaseManager> db_manager_;
     std::shared_ptr<TDengineManager> tdengine_manager_;
 };
 
