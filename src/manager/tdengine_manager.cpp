@@ -466,13 +466,12 @@ nlohmann::json TDengineManager::queryTDengine(const std::string& sql) {
 
     int num_fields = ws_field_count(res);
     const WS_FIELD* fields = ws_fetch_fields(res);
-    int* lengths = ws_fetch_lengths(res);
 
     WS_ROW row;
-    while ((row = ws_fetch_row_r(res, lengths))) {
+    while ((row = ws_fetch_row(res))) {
         nlohmann::json row_json;
         for (int i = 0; i < num_fields; ++i) {
-            const char* value = (const char*)row[i];
+            const void* value = row[i];
             if (value) {
                 switch (fields[i].type) {
                     case TSDB_DATA_TYPE_BOOL:
@@ -496,9 +495,12 @@ nlohmann::json TDengineManager::queryTDengine(const std::string& sql) {
                     case TSDB_DATA_TYPE_DOUBLE:
                         row_json[fields[i].name] = *(double*)value;
                         break;
+                    case TSDB_DATA_TYPE_VARCHAR:
                     case TSDB_DATA_TYPE_BINARY:
                     case TSDB_DATA_TYPE_NCHAR: {
-                        row_json[fields[i].name] = std::string(value, lengths[i]);
+                        // 对于VARCHAR类型，长度存储在数据前面的2个字节中
+                        uint16_t length = *(uint16_t*)((uint8_t*)value - 2);
+                        row_json[fields[i].name] = std::string((const char*)value, length);
                         break;
                     }
                     case TSDB_DATA_TYPE_TIMESTAMP:
@@ -506,7 +508,8 @@ nlohmann::json TDengineManager::queryTDengine(const std::string& sql) {
                          row_json[fields[i].name] = *(int64_t*)value / 1000000;
                         break;
                     default: {
-                        row_json[fields[i].name] = std::string(value, lengths[i]);
+                        // 对于其他类型，使用字段定义的字节数
+                        row_json[fields[i].name] = std::string((const char*)value, fields[i].bytes);
                         break;
                     }
                 }
@@ -739,18 +742,18 @@ nlohmann::json TDengineManager::getNodesWithLatestMetrics() {
             std::string gpu_index_str = table_name.substr(last_underscore + 1);
             int gpu_index = std::stoi(gpu_index_str);
             
-            // 查询这个GPU的最新数据
-            nlohmann::json gpu_data = queryTDengine("SELECT LAST_ROW(*) FROM " + table_name);
+            // 查询这个GPU的最新数据，明确指定TAGS列以获取TAGS数据
+            nlohmann::json gpu_data = queryTDengine("SELECT LAST_ROW(*), host_ip, box_id, slot_id, gpu_index, gpu_name FROM " + table_name);
             if (!gpu_data.empty()) {
                 const auto& data = gpu_data[0];
                 nlohmann::json gpu_info;
                 gpu_info["compute_usage"] = data.value("last_row(compute_usage)", 0.0);
                 gpu_info["current"] = 0.0; // 需要从其他地方获取
-                gpu_info["index"] = gpu_index;
+                gpu_info["index"] = data.value("gpu_index", gpu_index);
                 gpu_info["mem_total"] = data.value("last_row(mem_total)", 0ULL);
                 gpu_info["mem_usage"] = data.value("last_row(mem_usage)", 0.0);
                 gpu_info["mem_used"] = data.value("last_row(mem_used)", 0ULL);
-                gpu_info["name"] = data.value("gpu_name", ""); // TAGS字段不需要last_row前缀
+                gpu_info["name"] = data.value("gpu_name", "");
                 gpu_info["power"] = data.value("last_row(power)", 0.0);
                 gpu_info["temperature"] = data.value("last_row(temperature)", 0.0);
                 gpu_info["voltage"] = 0.0; // 需要从其他地方获取
@@ -775,14 +778,14 @@ nlohmann::json TDengineManager::getNodesWithLatestMetrics() {
             std::string table_name = table_info.value("table_name", "");
             if (table_name.empty()) continue;
             
-            // 查询这个磁盘的最新数据
-            nlohmann::json disk_data = queryTDengine("SELECT LAST_ROW(*) FROM " + table_name);
+            // 查询这个磁盘的最新数据，明确指定TAGS列以获取TAGS数据
+            nlohmann::json disk_data = queryTDengine("SELECT LAST_ROW(*), host_ip, box_id, slot_id, device, mount_point FROM " + table_name);
             if (!disk_data.empty()) {
                 const auto& data = disk_data[0];
                 nlohmann::json disk_info;
-                disk_info["device"] = data.value("device", ""); // TAGS字段不需要last_row前缀
+                disk_info["device"] = data.value("device", "");
                 disk_info["free"] = data.value("last_row(free)", 0ULL);
-                disk_info["mount_point"] = data.value("mount_point", ""); // TAGS字段不需要last_row前缀
+                disk_info["mount_point"] = data.value("mount_point", "");
                 disk_info["total"] = data.value("last_row(total)", 0ULL);
                 disk_info["usage_percent"] = data.value("last_row(usage_percent)", 0.0);
                 disk_info["used"] = data.value("last_row(used)", 0ULL);
@@ -807,12 +810,12 @@ nlohmann::json TDengineManager::getNodesWithLatestMetrics() {
             std::string table_name = table_info.value("table_name", "");
             if (table_name.empty()) continue;
             
-            // 查询这个网络接口的最新数据
-            nlohmann::json net_data = queryTDengine("SELECT LAST_ROW(*) FROM " + table_name);
+            // 查询这个网络接口的最新数据，明确指定TAGS列以获取TAGS数据
+            nlohmann::json net_data = queryTDengine("SELECT LAST_ROW(*), host_ip, box_id, slot_id, interface FROM " + table_name);
             if (!net_data.empty()) {
                 const auto& data = net_data[0];
                 nlohmann::json net_info;
-                net_info["interface"] = data.value("interface", ""); // TAGS字段不需要last_row前缀
+                net_info["interface"] = data.value("interface", "");
                 net_info["rx_bytes"] = data.value("last_row(rx_bytes)", 0ULL);
                 net_info["rx_errors"] = data.value("last_row(rx_errors)", 0);
                 net_info["rx_packets"] = data.value("last_row(rx_packets)", 0ULL);
@@ -843,8 +846,8 @@ nlohmann::json TDengineManager::getNodesWithLatestMetrics() {
             std::string table_name = table_info.value("table_name", "");
             if (table_name.empty()) continue;
             
-            // 查询这个容器的最新数据
-            nlohmann::json container_data = queryTDengine("SELECT LAST_ROW(*) FROM " + table_name);
+            // 查询这个容器的最新数据，明确指定TAGS列以获取TAGS数据
+            nlohmann::json container_data = queryTDengine("SELECT LAST_ROW(*), host_ip, box_id, slot_id, container_id, container_name, instance_id, uuid, component_index FROM " + table_name);
             if (!container_data.empty()) {
                 const auto& data = container_data[0];
                 std::string status = data.value("last_row(status)", "");
