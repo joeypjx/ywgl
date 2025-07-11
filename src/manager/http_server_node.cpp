@@ -159,7 +159,7 @@ void HTTPServer::handleResourceUpdate(const httplib::Request &req, httplib::Resp
     }
 }
 
-// 处理获取所有节点信息
+// 处理获取节点信息（支持可选的host_ip参数）
 void HTTPServer::handleGetAllNodes(const httplib::Request &req, httplib::Response &res)
 {
     try
@@ -168,8 +168,25 @@ void HTTPServer::handleGetAllNodes(const httplib::Request &req, httplib::Respons
             sendErrorResponse(res, "TDengine manager not initialized");
             return;
         }
-        auto nodes = tdengine_manager_->getAllNodesInfo();
-        sendSuccessResponse(res, "nodes", nodes);
+
+        // 检查是否有 host_ip 参数
+        if (req.has_param("host_ip")) {
+            std::string host_ip = req.get_param_value("host_ip");
+            
+            // 获取指定 IP 的节点信息
+            auto node = tdengine_manager_->getNodeInfoByHostIp(host_ip);
+            
+            if (node.is_null() || node.empty()) {
+                sendErrorResponse(res, "Node not found for host_ip: " + host_ip);
+                return;
+            }
+            
+            sendSuccessResponse(res, "node", node);
+        } else {
+            // 获取所有节点信息
+            auto nodes = tdengine_manager_->getAllNodesInfo();
+            sendSuccessResponse(res, "nodes", nodes);
+        }
     }
     catch (const std::exception &e)
     {
