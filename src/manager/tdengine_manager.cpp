@@ -833,14 +833,14 @@ nlohmann::json TDengineManager::getNodesWithLatestMetrics() {
         // 需要查询所有容器子表，因为每个容器都有独立的子表
         nlohmann::json container_metrics_result = queryTDengine("SHOW TABLES LIKE 'container_" + std::to_string(box_id) + "_" + std::to_string(slot_id) + "_%'");
         
-        nlohmann::json docker_metrics;
-        docker_metrics["component"] = nlohmann::json::array(); // 需要从其他地方获取完整的容器信息
-        docker_metrics["container_count"] = 0;
-        docker_metrics["paused_count"] = 0; // 需要统计状态
-        docker_metrics["running_count"] = 0; // 需要统计状态
-        docker_metrics["stopped_count"] = 0; // 需要统计状态
+        nlohmann::json container_metrics;
+        container_metrics["component"] = nlohmann::json::array();
+        container_metrics["container_count"] = 0;
+        container_metrics["paused_count"] = 0;
+        container_metrics["running_count"] = 0;
+        container_metrics["stopped_count"] = 0;
         
-        // 从表名列表中查询每个容器的最新数据并统计状态
+        // 从表名列表中查询每个容器的最新数据
         for (const auto& table_info : container_metrics_result) {
             std::string table_name = table_info.value("table_name", "");
             if (table_name.empty()) continue;
@@ -849,20 +849,67 @@ nlohmann::json TDengineManager::getNodesWithLatestMetrics() {
             nlohmann::json container_data = queryTDengine("SELECT LAST_ROW(*), host_ip, box_id, slot_id, container_id, container_name, instance_id, uuid, component_index FROM " + table_name);
             if (!container_data.empty()) {
                 const auto& data = container_data[0];
+                
+                // 构建容器信息对象
+                nlohmann::json container_info;
+                container_info["container_id"] = data.value("container_id", "");
+                container_info["container_name"] = data.value("container_name", "");
+                container_info["instance_id"] = data.value("instance_id", "");
+                container_info["uuid"] = data.value("uuid", "");
+                container_info["component_index"] = data.value("component_index", -1);
+                container_info["status"] = data.value("last_row(status)", "");
+                container_info["timestamp"] = data.value("last_row(ts)", 0);
+                
+                // 添加资源使用信息
+                nlohmann::json resource_info;
+                nlohmann::json cpu_info;
+                cpu_info["load"] = data.value("last_row(cpu_load)", 0.0);
+                resource_info["cpu"] = cpu_info;
+                
+                nlohmann::json memory_info;
+                memory_info["mem_used"] = data.value("last_row(memory_used)", 0ULL);
+                memory_info["mem_limit"] = data.value("last_row(memory_limit)", 0ULL);
+                // 计算内存使用率
+                auto mem_used = data.value("last_row(memory_used)", 0ULL);
+                auto mem_limit = data.value("last_row(memory_limit)", 0ULL);
+                if (mem_limit > 0) {
+                    memory_info["usage_percent"] = (double)mem_used / mem_limit * 100.0;
+                } else {
+                    memory_info["usage_percent"] = 0.0;
+                }
+                resource_info["memory"] = memory_info;
+                
+                nlohmann::json network_info;
+                network_info["tx"] = data.value("last_row(network_tx)", 0ULL);
+                network_info["rx"] = data.value("last_row(network_rx)", 0ULL);
+                resource_info["network"] = network_info;
+                
+                container_info["resource"] = resource_info;
+                
+                // 添加到组件数组
+                container_metrics["component"].push_back(container_info);
+                
+                // 统计不同状态的容器数量
                 std::string status = data.value("last_row(status)", "");
                 if (status == "running") {
-                    docker_metrics["running_count"] = docker_metrics["running_count"].get<int>() + 1;
+                    container_metrics["running_count"] = container_metrics["running_count"].get<int>() + 1;
                 } else if (status == "paused") {
-                    docker_metrics["paused_count"] = docker_metrics["paused_count"].get<int>() + 1;
+                    container_metrics["paused_count"] = container_metrics["paused_count"].get<int>() + 1;
                 } else if (status == "stopped") {
-                    docker_metrics["stopped_count"] = docker_metrics["stopped_count"].get<int>() + 1;
+                    container_metrics["stopped_count"] = container_metrics["stopped_count"].get<int>() + 1;
                 }
-                docker_metrics["container_count"] = docker_metrics["container_count"].get<int>() + 1;
+                container_metrics["container_count"] = container_metrics["container_count"].get<int>() + 1;
             }
         }
         
+        // 设置整体时间戳（如果有容器的话，使用第一个容器的时间戳）
+        if (container_metrics["component"].size() > 0) {
+            container_metrics["timestamp"] = container_metrics["component"][0].value("timestamp", 0);
+        } else {
+            container_metrics["timestamp"] = 0;
+        }
 
-        node["latest_docker_metrics"] = docker_metrics;
+        node["latest_container_metrics"] = container_metrics;
     }
 
     return nodes;
