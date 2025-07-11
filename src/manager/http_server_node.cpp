@@ -3,6 +3,8 @@
 #include <iostream>
 #include <chrono>
 #include <nlohmann/json.hpp>
+#include <sstream>
+#include <algorithm>
 
 // 工具函数：检查json字段
 static bool check_json_fields(const nlohmann::json& j, const std::vector<std::string>& fields) {
@@ -34,6 +36,10 @@ void HTTPServer::initNodeRoutes()
     // GET /node/hierarchical - 获取层级结构的节点信息
     server_.Get("/node/hierarchical", [this](const httplib::Request &req, httplib::Response &res)
                 { handleGetNodesHierarchical(req, res); });
+
+    // GET /node/historical-metrics - 获取节点历史指标数据
+    server_.Get("/node/historical-metrics", [this](const httplib::Request &req, httplib::Response &res)
+                { handleGetNodeHistoricalMetrics(req, res); });
 }
 
 // 处理节点心跳请求
@@ -205,4 +211,86 @@ void HTTPServer::handleGetNodesHierarchical(const httplib::Request &req, httplib
     // {
     //     sendExceptionResponse(res, e);
     // }
+}
+
+// 处理获取节点历史指标数据
+void HTTPServer::handleGetNodeHistoricalMetrics(const httplib::Request &req, httplib::Response &res)
+{
+    try
+    {
+        if (!tdengine_manager_) {
+            sendErrorResponse(res, "TDengine manager not initialized");
+            return;
+        }
+
+        // 获取查询参数
+        std::string host_ip;
+        std::string time_range;
+        std::string metrics_param;
+
+        // 检查必需的参数
+        if (req.has_param("host_ip")) {
+            host_ip = req.get_param_value("host_ip");
+        } else {
+            sendErrorResponse(res, "Missing required parameter: host_ip");
+            return;
+        }
+
+        if (req.has_param("time_range")) {
+            time_range = req.get_param_value("time_range");
+        } else {
+            sendErrorResponse(res, "Missing required parameter: time_range");
+            return;
+        }
+
+        if (req.has_param("metrics")) {
+            metrics_param = req.get_param_value("metrics");
+        } else {
+            sendErrorResponse(res, "Missing required parameter: metrics");
+            return;
+        }
+
+        // 解析 metrics 参数（逗号分隔的字符串）
+        std::vector<std::string> metrics;
+        std::string metric;
+        std::stringstream ss(metrics_param);
+        
+        while (std::getline(ss, metric, ',')) {
+            // 去除首尾空格
+            metric.erase(0, metric.find_first_not_of(" \t"));
+            metric.erase(metric.find_last_not_of(" \t") + 1);
+            if (!metric.empty()) {
+                metrics.push_back(metric);
+            }
+        }
+
+        if (metrics.empty()) {
+            sendErrorResponse(res, "No valid metrics specified");
+            return;
+        }
+
+        // 验证指标类型是否有效
+        std::vector<std::string> valid_metrics = {"cpu", "memory", "gpu", "disk", "network", "container"};
+        for (const auto& m : metrics) {
+            if (std::find(valid_metrics.begin(), valid_metrics.end(), m) == valid_metrics.end()) {
+                sendErrorResponse(res, "Invalid metric type: " + m + ". Valid types are: cpu, memory, gpu, disk, network, container");
+                return;
+            }
+        }
+
+        // 调用 TDengineManager 获取历史数据
+        auto historical_data = tdengine_manager_->getNodeHistoricalMetrics(host_ip, time_range, metrics);
+        
+        // 检查是否有错误
+        if (historical_data.contains("error")) {
+            sendErrorResponse(res, historical_data["error"].get<std::string>());
+            return;
+        }
+
+        sendSuccessResponse(res, "historical_metrics", historical_data);
+    }
+    catch (const std::exception &e)
+    {
+        sendExceptionResponse(res, e);
+    }
 }

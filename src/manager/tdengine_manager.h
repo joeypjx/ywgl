@@ -8,6 +8,7 @@
 #include <thread>
 #include <atomic>
 #include <memory>
+#include <vector>
 
 // 包含 TDengine WebSocket 头文件
 #include "/usr/local/taos/include/taosws.h" 
@@ -116,6 +117,17 @@ public:
      * @return 包含节点及其最新指标的 JSON 数组
      */
     nlohmann::json getNodesWithLatestMetrics();
+
+    /**
+     * @brief 获取指定节点在指定时间范围内的历史指标数据
+     * @param host_ip 节点的IP地址
+     * @param time_range 时间范围（如 "5m", "1h", "1d" 等）
+     * @param metrics 要查询的指标类型（如 ["cpu", "memory", "gpu", "disk", "network", "container"]）
+     * @return 包含历史指标数据的 JSON 对象
+     */
+    nlohmann::json getNodeHistoricalMetrics(const std::string& host_ip, 
+                                            const std::string& time_range, 
+                                            const std::vector<std::string>& metrics);
 
     /**
      * @brief 启动一个后台线程来监控节点状态

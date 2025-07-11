@@ -38,6 +38,7 @@ public:
     void handleHeartbeat(const httplib::Request& req, httplib::Response& res);
     void handleGetNodeMetrics(const httplib::Request& req, httplib::Response& res);
     void handleGetNodesHierarchical(const httplib::Request& req, httplib::Response& res);
+    void handleGetNodeHistoricalMetrics(const httplib::Request& req, httplib::Response& res);
     
     // 告警相关路由处理
     void handlePostAlarmRule(const httplib::Request& req, httplib::Response& res);
